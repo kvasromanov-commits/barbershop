@@ -11,12 +11,21 @@ async def init_pool() -> None:
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
         import asyncpg
+        # P1 FIX: pool size + command timeout from env (defaults preserve previous behaviour)
+        import config as _cfg
         _pool = await asyncpg.create_pool(
-            database_url, min_size=2, max_size=10,
-            command_timeout=30, statement_cache_size=0,
+            database_url,
+            min_size=_cfg.DB_POOL_MIN,
+            max_size=_cfg.DB_POOL_MAX,
+            command_timeout=_cfg.DB_COMMAND_TIMEOUT,
+            statement_cache_size=0,
         )
         _use_pg = True
-        logger.info("db.py: PostgreSQL pool initialised")
+        logger.info(
+            f"db.py: PostgreSQL pool initialised "
+            f"(min={_cfg.DB_POOL_MIN}, max={_cfg.DB_POOL_MAX}, "
+            f"command_timeout={_cfg.DB_COMMAND_TIMEOUT}s)"
+        )
     else:
         _use_pg = False
         logger.info("db.py: SQLite mode (no DATABASE_URL)")

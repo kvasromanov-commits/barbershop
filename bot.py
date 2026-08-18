@@ -40,7 +40,17 @@ async def main():
         timeout = ClientTimeout(total=60, connect=30, sock_connect=30, sock_read=30)
         session = AiohttpSession(proxy=proxy, timeout=timeout)
         bot = Bot(token=BOT_TOKEN, session=session)
-        logger.info(f"Using proxy: {proxy}")
+        # P0 FIX: mask credentials in proxy URL to prevent leakage to logs/Sentry
+        masked = proxy
+        if "@" in masked:
+            _scheme, _, _creds_host = masked.partition("://")
+            _creds, _, _host = _creds_host.partition("@")
+            if ":" in _creds:
+                _user, _, _ = _creds.partition(":")
+                masked = f"{_scheme}://{_user}:****@{_host}"
+            else:
+                masked = f"{_scheme}://****@{_host}"
+        logger.info(f"Using proxy: {masked}")
     else:
         bot = Bot(token=BOT_TOKEN)
         logger.info("No proxy configured, using direct connection")
@@ -138,9 +148,9 @@ async def main():
         # Answer user
         try:
             if event.update.message:
-                await event.update.message.answer("Произошла ошибка. Попрбуйте позже.")
+                await event.update.message.answer("Произошла ошибка. Попробуйте позже.")
             elif event.update.callback_query:
-                await event.update.callback_query.answer("Произошла ошибка. Попрбуйте поже.", show_alert=True)
+                await event.update.callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
         except Exception:
             pass
 

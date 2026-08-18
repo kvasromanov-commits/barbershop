@@ -34,6 +34,10 @@ if raw_master_ids:
 # База данных
 DB_PATH = os.getenv("DB_PATH", "/app/data/barbershop.db")
 TIMEZONE = os.getenv("TIMEZONE", "Asia/Almaty")
+# P1 FIX: configurable asyncpg pool size (defaults to 10 / 2 as in db.py)
+DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
+DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
+DB_COMMAND_TIMEOUT = int(os.getenv("DB_COMMAND_TIMEOUT", "30"))
 
 # ========================================
 # НАСТРОИКИ БАРБЕРШОПА

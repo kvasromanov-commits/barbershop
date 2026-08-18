@@ -32,22 +32,26 @@ async def check_db_health() -> bool:
 
 
 async def check_storage_health() -> bool:
-    """HIGH-05 FIX: Actually check the FSM storage (FileStorage or Redis)."""
+    """HIGH-05 FIX + P1 FIX: Verify FSM storage liveness.
+    Redis is exercised via aiogram's RedisStorage when REDIS_URL is set.
+    FileStorage is verified by a read+parse of the JSON state file.
+    Dead `aioredis` import (deprecated package) removed — `aiogram.fsm.storage.redis`
+    uses `redis>=4.6` directly.
+    """
     try:
-        import os
         redis_url = os.getenv("REDIS_URL", "")
         if redis_url:
-            # M-3 FIX: guard aioredis import in case package is not installed
+            # P1 FIX: use the modern `redis` async client that aiogram actually depends on
             try:
-                import aioredis
+                import redis.asyncio as redis_async
+                r = redis_async.from_url(redis_url, socket_connect_timeout=3)
+                await r.ping()
+                await r.aclose()
             except ImportError:
-                logger.warning("aioredis not installed: skipping Redis health check")
+                logger.warning("redis package missing — skipping Redis health check")
                 return True
-            r = await aioredis.from_url(redis_url, socket_connect_timeout=3)
-            await r.ping()
-            await r.close()
         else:
-            # Test FileStorage JSON file is readable/writable
+            # Test FileStorage JSON file is readable/parseable
             import config as _cfg
             from pathlib import Path
             fsm_file = Path(_cfg.DB_PATH).parent / "fsm_state.json"

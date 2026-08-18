@@ -28,14 +28,13 @@ services:
     volumes:
       - barbershop_data:/app/data
       - barbershop_backups:/app/backups
-    # H-2 FIX: check bot process is alive, not just that a file can be created
+    # H-2 FIX + P0 FIX: real liveness probe — verify bot process is alive AND DB exists,
+    # instead of just one weak signal. Catches mid-init crashes.
     healthcheck:
       test:
-        - "CMD"
-        - "python"
-        - "-c"
-        - "import subprocess,sys; r=subprocess.run([\"pgrep\",\"-f\",\"bot.py\"],capture_output=True); sys.exit(0 if r.returncode==0 else 1)"
-      interval: 60s
+        - "CMD-SHELL"
+        - "pgrep -f 'python bot.py' > /dev/null && python -c 'import os, sys; db=os.getenv(\"DB_PATH\",\"/app/data/barbershop.db\"); sys.exit(0 if os.path.exists(db) else 1)'"
+      interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s

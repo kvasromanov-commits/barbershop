@@ -576,9 +576,35 @@ async def get_all_bookings() -> list[dict]:
         return await conn.fetch("SELECT * FROM bookings ORDER BY date, time")
 
 
+async def get_all_bookings_paged(offset: int = 0, limit: int = 50):
+    """P1 FIX: SQL-level pagination for admin bookings list.
+    Returns (page_items: list[dict], total: int).
+    """
+    async with _db.acquire() as conn:
+        total = (await conn.fetchval("SELECT COUNT(*) FROM bookings")) or 0
+        rows = await conn.fetch(
+            "SELECT * FROM bookings ORDER BY date DESC, time DESC LIMIT ? OFFSET ?",
+            limit, offset,
+        )
+        return list(rows), int(total)
+
+
 async def export_bookings_csv() -> list[dict]:
     async with _db.acquire() as conn:
         return await conn.fetch("SELECT * FROM bookings ORDER BY date, time")
+
+
+async def export_bookings_csv_paged(offset: int = 0, limit: int = 1000):
+    """P1 FIX: bounded streaming for CSV export. Cap at 1000 rows per page
+    so admin exports stay under Telegram's 50MB upload limit and never OOM.
+    """
+    async with _db.acquire() as conn:
+        total = (await conn.fetchval("SELECT COUNT(*) FROM bookings")) or 0
+        rows = await conn.fetch(
+            "SELECT * FROM bookings ORDER BY date DESC, time DESC LIMIT ? OFFSET ?",
+            limit, offset,
+        )
+        return list(rows), int(total)
 
 
 async def cleanup_old_bookings(days: int = 90) -> int:
@@ -784,6 +810,19 @@ async def get_loyalty_list() -> list[dict]:
         return await conn.fetch("SELECT * FROM loyalty ORDER BY visits DESC")
 
 
+async def get_loyalty_list_paged(offset: int = 0, limit: int = 50):
+    """P1 FIX: SQL-level pagination for admin loyalty view.
+    Returns (page_items: list[dict], total: int).
+    """
+    async with _db.acquire() as conn:
+        total = (await conn.fetchval("SELECT COUNT(*) FROM loyalty")) or 0
+        rows = await conn.fetch(
+            "SELECT * FROM loyalty ORDER BY visits DESC LIMIT ? OFFSET ?",
+            limit, offset,
+        )
+        return list(rows), int(total)
+
+
 
 async def ensure_user_ref_code(telegram_id: int, name: str = "") -> str:
     """Ensure the user has a loyalty record with a ref_code.
@@ -854,6 +893,19 @@ async def get_referrals() -> list[dict]:
         return await conn.fetch("SELECT * FROM referrals ORDER BY created_at")
 
 
+async def get_referrals_paged(offset: int = 0, limit: int = 50):
+    """P1 FIX: SQL-level pagination for admin referrals view.
+    Returns (page_items: list[dict], total: int).
+    """
+    async with _db.acquire() as conn:
+        total = (await conn.fetchval("SELECT COUNT(*) FROM referrals")) or 0
+        rows = await conn.fetch(
+            "SELECT * FROM referrals ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            limit, offset,
+        )
+        return list(rows), int(total)
+
+
 async def get_user_by_ref_code(ref_code: str) -> dict | None:
     async with _db.acquire() as conn:
         return await conn.fetchrow(
@@ -888,6 +940,19 @@ async def save_review(booking_id: str, telegram_id: int, rating: int, comment: s
 async def get_reviews() -> list[dict]:
     async with _db.acquire() as conn:
         return await conn.fetch("SELECT * FROM reviews ORDER BY created_at DESC")
+
+
+async def get_reviews_paged(offset: int = 0, limit: int = 15):
+    """P1 FIX: SQL-level pagination for admin reviews view.
+    Returns (page_items: list[dict], total: int).
+    """
+    async with _db.acquire() as conn:
+        total = (await conn.fetchval("SELECT COUNT(*) FROM reviews")) or 0
+        rows = await conn.fetch(
+            "SELECT * FROM reviews ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            limit, offset,
+        )
+        return list(rows), int(total)
 
 
 # ======================================================================

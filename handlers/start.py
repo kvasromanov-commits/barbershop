@@ -516,7 +516,9 @@ async def cb_invite_friend(callback: CallbackQuery):
         )
     except Exception as e:
         logger.error(f"Error in cb_invite_friend: {e}")
+        # P2 FIX: only answer on error path; the success path answers below once
         await callback.answer("Ошибка. Попробуйте позже.", show_alert=True)
+        return
     await callback.answer()
 
 

@@ -188,7 +188,8 @@ async def cb_admin_export(callback: CallbackQuery):
     
     filepath = None
     try:
-        bookings = await storage.export_bookings_csv()
+        # P1 FIX: cap export at 1000 rows per page (Telegram 50MB limit + OOM safety)
+        bookings, total = await storage.export_bookings_csv_paged(offset=0, limit=1000)
         filename = f"bookings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         
         # Use absolute path
@@ -220,7 +221,9 @@ async def cb_admin_export(callback: CallbackQuery):
             file = FSInputFile(str(filepath))
             await callback.message.answer_document(
                 document=file,
-                caption=f"{E.CHART} Экспорт всех записей\nВсего: {len(bookings)} записей"
+                caption=f"{E.CHART} Экспорт записей (первые {len(bookings)} из {total})\n"
+                        f"{E.WARNING if total > len(bookings) else E.CHECK} "
+                        f"{'Есть ещё записи — экспорт ограничен 1000 строками за раз' if total > len(bookings) else 'Полный список'}"
             )
             await edit_with_retry(
                 callback.message,
@@ -1048,12 +1051,10 @@ async def cb_admin_reviews_page(callback: CallbackQuery):
 
 
 async def _show_admin_reviews_page(callback, offset: int = 0):
-    """HIGH-06 FIX: Paginated reviews to avoid 4096-char Telegram limit."""
+    """HIGH-06 FIX + P1 FIX: SQL-level paginated reviews to avoid OOM on large datasets."""
     PAGE = 15
     try:
-        reviews = await storage.get_reviews()
-        total = len(reviews)
-        page_items = reviews[offset:offset + PAGE]
+        page_items, total = await storage.get_reviews_paged(offset=offset, limit=PAGE)
         text = f"{E.COMMENT} Отзывы ({total} всего):\n\n"
         for r in page_items:
             comment_preview = html.escape(r.get("comment", "") or "")[:60]
@@ -1062,7 +1063,7 @@ async def _show_admin_reviews_page(callback, offset: int = 0):
             text += f"{E.ID} <code>{r['booking_id']}</code>: {'⭐' * r['rating']} ({keyboards._format_date(r['created_at'][:10])})\n"
             if comment_preview:
                 text += f"   {comment_preview}\n"
-        if not reviews:
+        if total == 0:
             text += f"{E.EMPTY} Нет отзывов.\n"
         nav_buttons = []
         if offset > 0:
@@ -1088,14 +1089,15 @@ async def cb_admin_loyalty(callback: CallbackQuery):
         await callback.answer(messages.ADMIN_ONLY, show_alert=True)
         return
     try:
-        loyalty = await storage.get_loyalty_list()
-        text = f"{E.STAR} Клиенты с бонусами:\n\n"
-        for l in loyalty[:50]:
+        # P1 FIX: SQL-level pagination — no longer truncated to first 50 silently
+        page, total = await storage.get_loyalty_list_paged(offset=0, limit=50)
+        text = f"{E.STAR} Клиенты с бонусами ({total} всего):\n\n"
+        for l in page:
             text += f"{E.USER} {l['name'] or 'Аноним'}: визитов {l['visits']}, бонусов {l['bonuses']}\n"
-        if not loyalty:
+        if total == 0:
             text += f"{E.EMPTY} Нет данных о лояльности.\n"
-        elif len(loyalty) > 50:
-            text += f"\n... и ещё {len(loyalty) - 50} клиентов\n"
+        elif total > 50:
+            text += f"\n{E.INFO} Показаны первые 50 из {total}. Используйте экспорт CSV для полного списка.\n"
         await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_kb())
     except Exception as e:
         logger.error(f"Error in admin_loyalty: {e}")
@@ -1108,14 +1110,15 @@ async def cb_admin_referrals(callback: CallbackQuery):
         await callback.answer(messages.ADMIN_ONLY, show_alert=True)
         return
     try:
-        referrals = await storage.get_referrals()
-        text = f"{E.PEOPLE} Рефералы:\n\n"
-        for r in referrals[:50]:
+        # P1 FIX: SQL-level pagination
+        page, total = await storage.get_referrals_paged(offset=0, limit=50)
+        text = f"{E.PEOPLE} Рефералы ({total} всего):\n\n"
+        for r in page:
             text += f"{E.USER} {r['referrer_id']} пригласил {r['referred_id']} ({keyboards._format_date(r['created_at'][:10])})\n"
-        if not referrals:
+        if total == 0:
             text += f"{E.EMPTY} Нет рефералов.\n"
-        elif len(referrals) > 50:
-            text += f"\n... и ещё {len(referrals) - 50} рефералов\n"
+        elif total > 50:
+            text += f"\n{E.INFO} Показаны первые 50 из {total}. Используйте экспорт CSV для полного списка.\n"
         await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_kb())
     except Exception as e:
         logger.error(f"Error in admin_referrals: {e}")
