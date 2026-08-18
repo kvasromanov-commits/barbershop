@@ -1,6 +1,11 @@
+import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
+
+import config as _cfg
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +57,10 @@ async def check_storage_health() -> bool:
                 return True
         else:
             # Test FileStorage JSON file is readable/parseable
-            import config as _cfg
-            from pathlib import Path
             fsm_file = Path(_cfg.DB_PATH).parent / "fsm_state.json"
-            parent = fsm_file.parent
-            parent.mkdir(parents=True, exist_ok=True)
+            fsm_file.parent.mkdir(parents=True, exist_ok=True)
             if fsm_file.exists():
                 with open(fsm_file, "r", encoding="utf-8") as f:
-                    import json
                     json.load(f)
         return True
     except Exception as e:
