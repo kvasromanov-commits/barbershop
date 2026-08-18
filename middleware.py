@@ -6,8 +6,48 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
 import config
+from logging_config import bind_request_id, new_request_id
 
 logger = logging.getLogger(__name__)
+
+
+class RequestIDMiddleware(BaseMiddleware):
+    """Stamp every inbound update with a fresh request_id stored in a
+    ContextVar so log records across the whole update inherit it.
+
+    Also exposes the id via `data["request_id"]` for handlers that want to
+    attach it to outbound API calls (e.g., correlation with Telegram's
+    own update_id) without going through the logging system.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    async def __call__(self, handler, event, data):
+        update_id = None
+        if event is not None:
+            update_id = getattr(event, "update_id", None)
+        new_request_id()
+        if update_id is not None:
+            # Bind the request id to something traceable (rounded update_id + uuid)
+            from logging_config import bind_request_id as _bind
+            _bind(f"upd{update_id}-" + _current_rid_short())
+        data["request_id"] = get_request_id_safe()
+        try:
+            return await handler(event, data)
+        except Exception:
+            logger.exception("Unhandled exception in handler")
+            raise
+
+
+def _current_rid_short() -> str:
+    from logging_config import get_request_id as _get
+    return _get()[:8]
+
+
+def get_request_id_safe() -> str:
+    from logging_config import get_request_id as _get
+    return _get()
 
 
 class RateLimitMiddleware(BaseMiddleware):

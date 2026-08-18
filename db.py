@@ -1,4 +1,4 @@
-import os, re, logging
+import os, re, logging, asyncio
 from contextlib import asynccontextmanager
 from typing import Any, Optional
 
@@ -6,26 +6,50 @@ logger = logging.getLogger(__name__)
 _pool = None
 _use_pg: bool = False
 
+
 async def init_pool() -> None:
+    """Initialise the DB pool.
+
+    PostgreSQL: pool with retry/backoff so a transient startup delay of the
+    Postgres container (e.g. on Railway zero-downtime deploy) does not kill
+    the bot. Five attempts: 1s → 2s → 4s → 8s → 16s (cumulative ~31 s).
+    SQLite: synchronous open on first query, so no retry needed.
+    """
     global _pool, _use_pg
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
         import asyncpg
         # P1 FIX: pool size + command timeout from env (defaults preserve previous behaviour)
         import config as _cfg
-        _pool = await asyncpg.create_pool(
-            database_url,
-            min_size=_cfg.DB_POOL_MIN,
-            max_size=_cfg.DB_POOL_MAX,
-            command_timeout=_cfg.DB_COMMAND_TIMEOUT,
-            statement_cache_size=0,
-        )
-        _use_pg = True
-        logger.info(
-            f"db.py: PostgreSQL pool initialised "
-            f"(min={_cfg.DB_POOL_MIN}, max={_cfg.DB_POOL_MAX}, "
-            f"command_timeout={_cfg.DB_COMMAND_TIMEOUT}s)"
-        )
+
+        last_exc: Optional[BaseException] = None
+        for attempt in range(5):
+            try:
+                _pool = await asyncpg.create_pool(
+                    database_url,
+                    min_size=_cfg.DB_POOL_MIN,
+                    max_size=_cfg.DB_POOL_MAX,
+                    command_timeout=_cfg.DB_COMMAND_TIMEOUT,
+                    statement_cache_size=0,
+                )
+                _use_pg = True
+                logger.info(
+                    f"db.py: PostgreSQL pool initialised "
+                    f"(min={_cfg.DB_POOL_MIN}, max={_cfg.DB_POOL_MAX}, "
+                    f"command_timeout={_cfg.DB_COMMAND_TIMEOUT}s)"
+                )
+                return
+            except Exception as e:  # connection refused, auth fail, DNS, etc.
+                last_exc = e
+                delay = 2 ** attempt
+                logger.warning(
+                    f"db.py: PG connect attempt {attempt + 1}/5 failed: "
+                    f"{type(e).__name__}: {e}. Retrying in {delay}s."
+                )
+                await asyncio.sleep(delay)
+        # All retries exhausted
+        logger.error(f"db.py: PostgreSQL pool could NOT be initialised after 5 attempts: {last_exc}")
+        raise last_exc if last_exc else RuntimeError("PostgreSQL init failed")
     else:
         _use_pg = False
         logger.info("db.py: SQLite mode (no DATABASE_URL)")

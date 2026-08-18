@@ -1,0 +1,114 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "barbershop-bot"
+version = "1.0.0"
+description = "Telegram bot for barbershop booking, reminders, loyalty & referrals (aiogram 3)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Barbershop Ostry Team" }
+]
+keywords = ["telegram", "aiogram", "bot", "barbershop", "booking"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Intended Audience :: Customer Service",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Communications :: Chat",
+  "Topic :: Office/Business :: Financial :: Investment",
+  "Typing :: Typed",
+]
+dependencies = [
+  "aiogram==3.7.0",
+  "aiosqlite==0.20.0",
+  "asyncpg==0.29.0",
+  "APScheduler==3.10.4",
+  "python-dotenv==1.0.1",
+  "aiohttp==3.9.5",
+  "tzdata==2024.2",
+  "redis>=4.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=5.0",
+  "freezegun>=1.5",
+  "ruff>=0.6.9",
+  "mypy>=1.11",
+  "types-redis>=4.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/ignatvanuskin-sys/barbershop-ostry"
+Issues = "https://github.com/ignatvanuskin-sys/barbershop-ostry/issues"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = [
+  "backups",
+  "data",
+  "logs",
+  ".venv*",
+  "__pycache__",
+  ".pytest_cache",
+  "scripts",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "ASYNC", "PIE", "RUF"]
+ignore = [
+  "E501",  # line length handled by formatter
+  "B008",  # do not perform function calls in argument defaults
+  "UP007", # keep compatibility annotations usable on 3.10
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401", "F811"]
+"storage.py" = ["E501"]  # SQL strings may exceed line length
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+no_strict_optional = false
+files = ["bot.py", "config.py", "db.py", "storage.py", "middleware.py", "utils.py", "scheduler.py", "backup.py", "monitoring.py", "logging_config.py"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+  "ignore::DeprecationWarning",
+  "ignore::pytest.PytestUnraisableExceptionWarning",
+]
+
+[tool.coverage.run]
+omit = [
+  "bot.py",
+  "patch_fixes.py",
+  "tests/*",
+]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+  "pragma: no cover",
+  "raise NotImplementedError",
+  "if __name__ == .__main__.:",
+]
+show_missing = true
+precision = 1

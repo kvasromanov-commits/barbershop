@@ -1,4 +1,7 @@
-# LOW-004/005 FIX: Exclude unnecessary files from Docker build
+# .dockerignore — keep the build context minimal.
+# Excluded from `docker build` (and therefore absent from the runtime image).
+
+# Python bytecode + caches
 __pycache__/
 *.pyc
 *.pyo
@@ -8,7 +11,7 @@ __pycache__/
 dist/
 build/
 
-# Local data - Railway uses volumes
+# Local persistence — Railway uses mounted volumes, not COPY
 data/
 backups/
 logs/
@@ -18,32 +21,53 @@ logs/
 fsm_state.json
 fsm_state.json.bak
 
-# Dev / test files
+# Tests + dev artifacts (CI runs them, runtime doesn't need them)
 tests/
+.venv*/
+.venv-test/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 *.test.py
 write_tests.py
 write_admin5.py
 patch_fixes.py
-pytest.ini
+storage_sqlite_backup.py
+migrate_db.py
+storage_sqlite_backup.pyc
+migrate_db.pyc
 
-# Scripts output
-scripts/
-
-# Env files
+# Env + secrets
 .env
 .env.*
 !.env.example
 
-# IDE
+# CI / IDE
+.github/
+.git/
+.gitignore
+.gitattributes
 .vscode/
 .idea/
 *.swp
 *.swo
+.DS_Store
+Thumbs.db
 
-# Git
-.git/
-.gitignore
-
-# Docs
+# Docs (large and not needed at runtime)
 README.md
-*.md
+CHANGELOG.md
+OPERATIONS.md
+DEPLOYMENT.md
+LICENSE
+
+# WorkBuddy internal cache (not source code)
+.workbuddy-ai/
+
+# EditorConfig / pre-commit / Makefile / pyproject — keep in tree for IDEs
+# but exclude from image to save ~30 KB; not strictly required.
+Makefile
+.editorconfig
+.pre-commit-config.yaml

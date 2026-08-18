@@ -1,102 +1,98 @@
+# Барбершоп Бот
 
-# Барбершоп Бот — документация по деплою
+Telegram-бот барбершопа «Острый» (Алматы): онлайн-запись, напоминания,
+отзывы, реферальная программа, лояльность, админ-панель, ежедневные бэкапы.
 
-Telegram-бот для барбершопа: онлайн-запись, напоминания, отзывы, реферальная система, программа лояльности.
+## Возможности
+
+- 📅 Онлайн-запись с защитой от двойного бронирования (`UNIQUE` индекс)
+- ⏰ Авто-напоминание за 24ч и завершение визитов
+- 🎁 Реферальная система с начислением бонусов
+- ⭐ Лояльность: каждая 5-я стрижка — скидка 10%
+- 📊 Админ-панель с пагинацией (на SQL `LIMIT/OFFSET`, не в Python-памяти)
+- 💾 Ежедневный бэкап БД с ротацией (30 копий)
+- 🌐 Long-polling (Railway-ready) с устойчивостью к TelegramConflictError
+- 🔐 Защита секретов в логах (прокси/Redis URL — маскируются)
+- 🪵 Structured logging (через `LOG_JSON=1`) + request ID для корреляции
+- 🪦 SIGTERM/SIGINT graceful shutdown: корректно гасит polling, БД-пул, FSM
+
+## Быстрый старт
+
+```bash
+cp .env.example .env       # заполните BOT_TOKEN и ADMIN_IDS
+docker compose up -d       # или: pip install -r requirements.txt && python bot.py
+```
+
+Для production-deploy см. **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+Для incidents — **[OPERATIONS.md](OPERATIONS.md)**.
+
+## Тесты
+
+```bash
+make test                  # или:  pytest -q
+make test-cov              # coverage report
+make lint                  # ruff check
+make format                # ruff format
+make type-check            # mypy (game modules)
+```
 
 ## Требования
 
 - Python 3.10+
-- aiogram 3.x
-- База данных: SQLite (дев) или PostgreSQL (продакшн)
-- Docker + Docker Compose (опционально)
-
-## Быстрый запуск
-
-### 1. Настройка переменных окружения
-
-```bash
-cp .env.example .env
-# Отредактируйте .env и заполните обязательные поля:
-BOT_TOKEN=ваш_токен_из_BotFather
-ADMIN_IDS=ваш_telegram_id
-```
-
-### 2a. Запуск через Docker
-
-```bash
-docker-compose up -d
-```
-
-### 2b. Запуск напрямую
-
-```bash
-pip install -r requirements.txt
-python bot.py
-```
-
-## Деплой на Railway
-
-1. Создайте новый проект на [railway.app](https://railway.app)
-2. Подключите PostgreSQL сервис (в настройках Railway)
-3. Добавьте переменные окружения (вкладка Variables):
-   - `BOT_TOKEN` — токен бота
-   - `ADMIN_IDS` — ваш Telegram ID
-   - `DATABASE_URL` — автоматически выставляется Railway
-   - `TIMEZONE` — `Asia/Almaty`
-   - `REDIS_URL` — рекомендуется добавить Redis сервис
-4. Деплойтесь через GitHub (push в main)
+- SQLite (по умолчанию) или PostgreSQL 14+ (рекомендуется для production)
+- Docker (опционально, но рекомендуется)
 
 ## Команды бота
 
 | Команда | Описание |
 |---------|----------|
 | `/start` | Главное меню |
-| `/me` | Профиль, записи, бонусы, реферальная ссылка |
+| `/me` | Профиль, активные записи, бонусы, реферальная ссылка |
 | `/master` | Список мастеров |
 | `/waitlist` | Мой лист ожидания |
 | `/cancel` | Отменить запись |
 | `/help` | Справка |
-| `/admin` | Панель администратора (только для ADMIN_IDS) |
+| `/admin` | Панель администратора (только для `ADMIN_IDS`) |
 
-## Реферальная система
-
-Каждый пользователь получает уникальную персональную ссылку через кнопку "🎁 Пригласить друга" в главном меню.
-При переходе нового пользователя по ссылке пригласившему автоматически начисляется `REFERRAL_BONUS` (по умолчанию 100) бонусов.
-
-## Структура файлов
+## Структура
 
 ```
 barbershop_deploy/
-├── bot.py              # Точка входа
-├── config.py           # Настройки барбершопа
-├── db.py               # Абстракция БД (SQLite/PG)
-├── storage.py          # Операции с базой данных
-├── scheduler.py        # Напоминания, авто-завершение броней
+├── bot.py              # Точка входа + SIGTERM graceful shutdown
+├── logging_config.py   # Structured JSON/human logging + request_id contextvar
+├── config.py           # Настройки + env-driven DB pool
+├── db.py               # DB-абстракция (SQLite/PG) + connection retry
+├── storage.py          # Операции с БД (пагинация на SQL)
+├── scheduler.py        # APScheduler: reminders, auto-complete, backup
 ├── keyboards.py        # Инлайн-клавиатуры
 ├── messages.py         # Текстовые шаблоны
-├── middleware.py       # Rate limit + Admin check
+├── middleware.py       # RequestID + RateLimit + AdminCheck
 ├── monitoring.py       # Health checks
 ├── backup.py           # Бэкап (SQLite gzip / PG SQL dump)
+├── fsm_storage.py      # File-based FSM fallback
+├── tz_utils.py         # TZ-aware datetime (zoneinfo, stdlib)
 ├── handlers/
-│   ├── start.py        # /start, профиль, рефералы, отмены
+│   ├── start.py        # /start, профиль, рефералы
 │   ├── booking.py      # Полный флоу записи
 │   ├── info.py         # Мастера, контакты, цены
 │   └── admin.py        # Админ-панель
-├── .env.example        # Шаблон переменных окружения
-├── Dockerfile
-└── docker-compose.yml
+├── tests/              # 47 тестов, 93% покрытие
+├── .github/workflows/ci.yml  # GitHub Actions (pytest × 3 Python + ruff + Docker build)
+├── pyproject.toml      # Project metadata + ruff/mypy/pytest/coverage config
+├── Dockerfile          # Multi-stage build для маленького итогового image
+├── docker-compose.yml  # Postgres + bot стек
+├── Makefile            # make test / lint / format / type-check / docker-up
+├── CHANGELOG.md        # История версий
+├── OPERATIONS.md       # Runbook для on-call
+├── DEPLOYMENT.md       # Railway step-by-step
+├── LICENSE             # MIT
+└── requirements.txt
 ```
 
 ## Переменные окружения
 
-| Переменная | Обяз.ательно | Описание |
-|------------|------------|----------|
-| `BOT_TOKEN` | ✅ | Токен из @BotFather |
-| `ADMIN_IDS` | ✅ | Telegram ID админа(ов), через запятую |
-| `DATABASE_URL` | ❌ | PostgreSQL URL (без него — SQLite) |
-| `DB_PATH` | ❌ | Путь SQLite (ум. `/app/data/barbershop.db`) |
-| `TIMEZONE` | ❌ | Часовой пояс (ум. `Asia/Almaty`) |
-| `REDIS_URL` | ❌ | Redis URL для FSM-хранилища |
-| `MASTER_IDS` | ❌ | `Имя=telegram_id,...` — уведомления мастерам |
-| `MIN_BOOKING_ADVANCE_MINUTES` | ❌ | Мин. минут до записи (ум. 60) |
-| `PROXY_URL` | ❌ | HTTP-прокси если Telegram заблокирован |
+Полный список — в [.env.example](.env.example) и [DEPLOYMENT.md](DEPLOYMENT.md#переменные-окружения).
+
+## Лицензия
+
+MIT — см. [LICENSE](LICENSE).

@@ -1,4 +1,5 @@
 import logging
+import signal
 import asyncio
 import os
 from aiogram import Bot, Dispatcher, F
@@ -15,14 +16,18 @@ from handlers.start import router as start_router
 from handlers.booking import router as booking_router
 from handlers.info import router as info_router
 from handlers.admin import router as admin_router
-from middleware import RateLimitMiddleware, AdminCheckMiddleware
+from middleware import (
+    RateLimitMiddleware,
+    AdminCheckMiddleware,
+    RequestIDMiddleware,
+)
 import keyboards
 from emoji_config import E
+from logging_config import configure_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+# HIGH-PRODUCTION: structured logging (JSON or human-readable).
+# Set LOG_JSON=1 in env for fluentbit/Loki/CloudWatch ingestion.
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -79,6 +84,11 @@ async def main():
         logger.info("Using FileStorage (no REDIS_URL set)")
 
     dp = Dispatcher(storage=storage)
+
+    # HIGH-PRODUCTION: RequestID middleware MUST run first so every subsequent
+    # middleware / handler inherits the same correlation id in logs.
+    dp.message.middleware(RequestIDMiddleware())
+    dp.callback_query.middleware(RequestIDMiddleware())
 
     # BUG-004 FIX: Register RateLimitMiddleware to prevent flooding
     dp.message.middleware(RateLimitMiddleware(max_requests=20, window=60))
@@ -256,24 +266,119 @@ async def main():
     # Telegram allows only ONE getUpdates session -> TelegramConflictError.
     # Retry up to 120s until the old container is stopped by Railway.
     from aiogram.exceptions import TelegramConflictError
-    for _attempt in range(24):
+
+    # HIGH-PRODUCTION: graceful shutdown via SIGTERM/SIGINT signal handler.
+    # On Linux (Railway): Railway sends SIGTERM and waits grace period before SIGKILL.
+    # We translate this into a clean drain of the polling loop, then close DB pool,
+    # bot session, and FSM storage.
+    stop_event = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def _request_stop(_sig_name: str = "SIGNAL") -> None:
+        if not stop_event.is_set():
+            logger.info(f"Shutdown requested via {_sig_name}; draining…")
+            stop_event.set()
+
+    for _sig in (signal.SIGTERM, signal.SIGINT):
         try:
-            logger.info(f"Starting polling (attempt {_attempt + 1}/24)...")
-            await dp.start_polling(bot, drop_pending_updates=True)
-            break
-        except TelegramConflictError:
-            if _attempt < 23:
-                logger.warning(
-                    f"TelegramConflictError: another instance active. "
-                    f"Retry {_attempt + 1}/24 in 5s..."
-                )
-                await asyncio.sleep(5)
-            else:
-                logger.error("TelegramConflictError: max retries exceeded.")
+            loop.add_signal_handler(_sig, _request_stop, _sig.name)
+        except (NotImplementedError, RuntimeError):
+            # Windows: only SIGINT works via signal.signal; SIGTERM is best-effort.
+            try:
+                signal.signal(_sig, lambda s, _f: _request_stop(_sig.name))
+            except (ValueError, OSError):
+                logger.warning(f"Could not install handler for {_sig.name}")
+
+    async def _run_polling() -> None:
+        for _attempt in range(24):
+            try:
+                logger.info(f"Starting polling (attempt {_attempt + 1}/24)...")
+                await dp.start_polling(bot, drop_pending_updates=True)
+                return
+            except TelegramConflictError:
+                if _attempt < 23:
+                    logger.warning(
+                        f"TelegramConflictError: another instance active. "
+                        f"Retry {_attempt + 1}/24 in 5s..."
+                    )
+                    await asyncio.sleep(5)
+                else:
+                    logger.error("TelegramConflictError: max retries exceeded.")
+                    raise
+            except asyncio.CancelledError:
+                logger.info("Polling task cancelled by shutdown signal")
                 raise
-    shutdown_scheduler()
-    await bot.session.close()
-    logger.info("Bot stopped")
+
+    polling_task = asyncio.create_task(_run_polling(), name="aiogram-polling")
+
+    # Wait for either: external stop event, or polling exiting on its own
+    await asyncio.wait(
+        {asyncio.create_task(stop_event.wait(), name="stop-waiter"), polling_task},
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    if not polling_task.done():
+        logger.info("Requesting polling stop…")
+        # Tell aiogram to leave long-poll cleanly, then give it 10s to drain.
+        try:
+            await asyncio.wait_for(_drain_polling(dp, polling_task), timeout=10.0)
+        except asyncio.TimeoutError:
+            logger.warning("Polling did not drain within 10s; cancelling")
+            polling_task.cancel()
+            try:
+                await polling_task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+    if stop_event.is_set():
+        # Stop waiter is done — cancel it; polling already completed/drained above
+        for t in asyncio.all_tasks():
+            if t.get_name() == "stop-waiter" and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+
+    # Graceful shutdown sequence: scheduler → FSM storage → DB pool → bot session.
+    try:
+        shutdown_scheduler()
+    except Exception as _e:
+        logger.warning(f"shutdown_scheduler() failed: {_e}")
+    try:
+        _storage = getattr(dp, "storage", None)
+        if _storage is not None and hasattr(_storage, "close"):
+            _close = _storage.close()
+            if asyncio.iscoroutine(_close):
+                await _close
+    except Exception as _e:
+        logger.warning(f"FSM storage close failed: {_e}")
+    try:
+        await _db_module.close_pool()
+    except Exception as _e:
+        logger.warning(f"db.close_pool() failed: {_e}")
+    try:
+        await bot.session.close()
+    except Exception as _e:
+        logger.warning(f"bot.session.close() failed: {_e}")
+    logger.info("Bot stopped cleanly")
+
+
+async def _drain_polling(dp, polling_task: asyncio.Task) -> None:
+    """Try to make aiogram exit long-poll cleanly so in-flight handlers finish."""
+    try:
+        # aiogram 3.x exposes Dispatcher.stop_polling as async; safe-call it.
+        stop = getattr(dp, "stop_polling", None)
+        if callable(stop):
+            res = stop()
+            if asyncio.iscoroutine(res):
+                await res
+    except Exception as _e:
+        logger.warning(f"dp.stop_polling() raised: {_e}")
+    try:
+        await asyncio.wait_for(polling_task, timeout=8.0)
+    except asyncio.TimeoutError:
+        raise
 
 
 if __name__ == "__main__":
