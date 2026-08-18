@@ -33,9 +33,8 @@ class TestTzUtilsExtended:
     def test_invalid_timezone_graceful(self):
         from tz_utils import get_now
         from datetime import datetime
-        import pytz
         try:
             now = get_now("Invalid/Timezone_XYZ")
             assert isinstance(now, datetime)
-        except (pytz.exceptions.UnknownTimeZoneError, Exception):
+        except Exception:
             pass  # acceptable
