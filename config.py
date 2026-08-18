@@ -29,7 +29,7 @@ if raw_master_ids:
             except ValueError:
                 pass
 
-SPREADSHEET_ID = os.getenv("SPREADSHEET_ID", "")
+# HIGH-004 FIX: SPREADSHEET_ID removed (Google Sheets not implemented)
 
 # База данных
 DB_PATH = os.getenv("DB_PATH", "/app/data/barbershop.db")

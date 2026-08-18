@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import asyncio
 import os
 from aiogram import Bot, Dispatcher, F
@@ -48,20 +48,16 @@ async def main():
     redis_url = os.getenv("REDIS_URL", "")
     if redis_url:
         try:
-            from redis_storage import RedisStorage
-            storage = RedisStorage(redis_url)
-            # BUG-018 FIX: Mask password in Redis URL for logs
+            # FIX: aiogram 3.x built-in RedisStorage (redis>=4.2 is dep of aioredis==2.0.1)
+            from aiogram.fsm.storage.redis import RedisStorage
+            storage = RedisStorage.from_url(redis_url)
+            # Mask password in Redis URL for logs
             masked_url = redis_url
             if "@" in masked_url:
-                parts = masked_url.split("@")
-                if ":" in parts[0]:
-                    user_pass = parts[0].split("://", 1)
-                    if len(user_pass) == 2:
-                        protocol = user_pass[0]
-                        credentials = user_pass[1]
-                        if ":" in credentials:
-                            user = credentials.split(":")[0]
-                            masked_url = f"{protocol}://{user}:****@{parts[1]}"
+                _parts = masked_url.split("@", 1)
+                _pcreds = _parts[0].rsplit(":", 1)
+                if len(_pcreds) == 2:
+                    masked_url = f"{_pcreds[0]}:****@{_parts[1]}"
             logger.info(f"Using Redis FSM storage: {masked_url}")
         except Exception as e:
             logger.warning(f"Redis not available, falling back to FileStorage: {e}")
@@ -82,32 +78,69 @@ async def main():
     dp.message.middleware(AdminCheckMiddleware())
     dp.callback_query.middleware(AdminCheckMiddleware())
 
+
     dp.include_router(start_router)
     dp.include_router(booking_router)
     dp.include_router(info_router)
     dp.include_router(admin_router)
 
-    # FIX BUG-1/2/3: Fallback только когда нет активного FSM-state.
-    # Без StateFilter(None) этот хендлер (зарегистрирован на dp напрямую)
-    # перехватывает ВСЕ текстовые сообщения до sub-router'ов (booking, admin),
-    # что ломало ввод имени на шаге 5/5 и все FSM-формы в admin-панели.
-    @dp.message(F.text, ~F.text.regexp(r"^/"), StateFilter(None))
+    # ROOT CAUSE FIX: handlers on dp run BEFORE sub-routers in aiogram 3.x,
+    # so @dp.callback_query consumed callbacks before booking_router could handle them.
+    # Solution: last-priority Router included after all other routers.
+    from aiogram import Router as _FBRouter
+    _fallback = _FBRouter(name="fallback")
+
+    @_fallback.message(F.text, ~F.text.regexp(r"^/"), StateFilter(None))
     async def fsm_fallback_handler(message: Message, state: FSMContext):
-        """Отвечает только когда у пользователя нет активного FSM-состояния."""
+        """Reached only when no other router matched + user has no FSM state."""
         await message.answer(
             f"{E.INFO} Напишите /start для начала работы.",
             reply_markup=keyboards.back_to_main_kb(),
             parse_mode="HTML"
         )
 
+    from aiogram.types import CallbackQuery as CQ
+    @_fallback.callback_query()
+    async def callback_fallback_handler(callback: CQ, state: FSMContext):
+        """Reached only when ALL routers failed to match - definitely unhandled."""
+        await callback.answer(
+            "Сессия устарела. Нажмите /start",
+            show_alert=True
+        )
+
+    # MUST be last so all other routers get priority over fallback
+    dp.include_router(_fallback)
     @dp.error()
     async def global_error_handler(event: ErrorEvent):
-        logger.error("Global error: %s", event.exception, exc_info=True)
+        import traceback as _tb
+        exc = event.exception
+        err_text = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))[:3000]
+        logger.error("Global error: %s", exc, exc_info=True)
+
+        # USER-CAUSED errors: no admin notification, just redirect user
+        # KeyError = stale FSM data, ValueError/AttributeError = bad user input
+        _user_errors = (KeyError, ValueError, AttributeError)
+        _is_user_error = isinstance(exc, _user_errors)
+
+        if not _is_user_error:
+            # Real bug - notify admins with full traceback
+            from config import ADMIN_IDS as _AIDS
+            for _aid in _AIDS:
+                try:
+                    await bot.send_message(
+                        _aid,
+                        "⚠️ <b>Ошибка бота</b>\n" + f"<pre>{err_text}</pre>",
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
+
+        # Answer user
         try:
             if event.update.message:
-                await event.update.message.answer("Произошла ошибка. Попробуйте позже.")
+                await event.update.message.answer("Произошла ошибка. Попрбуйте позже.")
             elif event.update.callback_query:
-                await event.update.callback_query.answer("Произошла ошибка. Попробуйте позже.", show_alert=True)
+                await event.update.callback_query.answer("Произошла ошибка. Попрбуйте поже.", show_alert=True)
         except Exception:
             pass
 
@@ -118,6 +151,16 @@ async def main():
     from storage import cleanup_slot_locks_on_startup
     await cleanup_slot_locks_on_startup()
 
+    # M-2 FIX: on first start (empty settings table) persist defaults to DB
+    try:
+        from storage import get_all_settings
+        _existing = await get_all_settings()
+        if not _existing:
+            logger.info("First startup detected: saving default config to DB")
+            from config import save_config_to_db
+            await save_config_to_db()
+    except Exception as _e:
+        logger.warning(f"First-startup config save failed: {_e}")
     await load_config_from_db()
     logger.info("Config loaded from DB")
 
@@ -181,9 +224,8 @@ async def main():
     #     await storage.clear_all_states()
     #     logger.info("FSM states cleared on startup")
 
-    # BUG-009 FIX: Run backup_database in thread pool to avoid blocking
-    await asyncio.to_thread(backup_database)
-    await asyncio.to_thread(cleanup_old_backups)
+    # MED-006 FIX: Backup moved to daily scheduler job (3:30 AM)
+    # Removed from startup to avoid blocking bot initialization
 
     await start_scheduler(bot)
     start_monitoring()

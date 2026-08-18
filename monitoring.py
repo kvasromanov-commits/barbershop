@@ -37,8 +37,12 @@ async def check_storage_health() -> bool:
         import os
         redis_url = os.getenv("REDIS_URL", "")
         if redis_url:
-            # Test Redis connectivity
-            import aioredis
+            # M-3 FIX: guard aioredis import in case package is not installed
+            try:
+                import aioredis
+            except ImportError:
+                logger.warning("aioredis not installed: skipping Redis health check")
+                return True
             r = await aioredis.from_url(redis_url, socket_connect_timeout=3)
             await r.ping()
             await r.close()

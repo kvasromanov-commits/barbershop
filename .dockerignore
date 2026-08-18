@@ -1,31 +1,49 @@
-# Python
+# LOW-004/005 FIX: Exclude unnecessary files from Docker build
 __pycache__/
-*.py[cod]
+*.pyc
 *.pyo
-.pytest_cache/
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
 
-# Env / secrets
-.env
-*.env
-
-# Database files (volume provides these at runtime)
-data/*.db
-data/*.db-wal
-data/*.db-shm
-data/*.json
-
-# Backups
+# Local data - Railway uses volumes
+data/
 backups/
-
-# Logs
 logs/
-*.log
+*.db
+*.db.gz
+*.sql.gz
+fsm_state.json
+fsm_state.json.bak
 
-# OS
-.DS_Store
-Thumbs.db
+# Dev / test files
+tests/
+*.test.py
+write_tests.py
+write_admin5.py
+patch_fixes.py
+pytest.ini
+
+# Scripts output
+scripts/
+
+# Env files
+.env
+.env.*
+!.env.example
 
 # IDE
 .vscode/
 .idea/
 *.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Docs
+README.md
+*.md

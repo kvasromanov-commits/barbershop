@@ -16,6 +16,8 @@ async def _pg_dump(database_url: str, backup_file: str) -> bool:
     try:
         import asyncpg
         conn = await asyncpg.connect(database_url, command_timeout=60)
+        # M-8 FIX: use repeatable-read transaction for consistent snapshot
+        await conn.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         tables = [
             "users", "bookings", "waitlist", "loyalty", "referrals",
             "reviews", "settings", "masters", "services",
@@ -56,7 +58,8 @@ async def _pg_dump(database_url: str, backup_file: str) -> bool:
 
 def backup_database():
     """CRIT-01 FIX: Backup both SQLite (gzip) and PostgreSQL (SQL dump, gzip).
-    Called via asyncio.to_thread -- safe to use asyncio.run() here."""
+    H-3 FIX: use explicit event loop (safe under uvloop or any custom policy).
+    Called via asyncio.to_thread -- the thread has no running loop."""
     try:
         os.makedirs(_BACKUP_DIR, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -64,7 +67,11 @@ def backup_database():
 
         if database_url:
             backup_file = os.path.join(_BACKUP_DIR, f"barbershop_{timestamp}.sql.gz")
-            success = asyncio.run(_pg_dump(database_url, backup_file))
+            _loop = asyncio.new_event_loop()
+            try:
+                success = _loop.run_until_complete(_pg_dump(database_url, backup_file))
+            finally:
+                _loop.close()
             if success:
                 logger.info(f"PostgreSQL backup created: {backup_file}")
                 return backup_file

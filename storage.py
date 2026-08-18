@@ -525,6 +525,39 @@ async def get_upcoming_bookings() -> list[dict]:
             today, today, now.strftime("%H:%M"),
         )
 
+async def get_upcoming_bookings_paged(offset: int = 0, limit: int = 5):
+    """HIGH-003 FIX: SQL-level pagination - no full table scan in Python.
+    Returns (page_items: list[dict], total: int).
+    """
+    now = get_now(config.TIMEZONE)
+    today = now.strftime("%Y-%m-%d")
+    current_time = now.strftime("%H:%M")
+    async with _db.acquire() as conn:
+        if _db.is_postgres():
+            total = (await conn.fetchval(
+                "SELECT COUNT(*) FROM bookings WHERE status='active'"
+                " AND (date>$1 OR (date=$1 AND time>=$2))",
+                today, current_time,
+            )) or 0
+            rows = await conn.fetch(
+                "SELECT * FROM bookings WHERE status='active'"
+                " AND (date>$1 OR (date=$1 AND time>=$2)) ORDER BY date, time LIMIT $3 OFFSET $4",
+                today, current_time, limit, offset,
+            )
+        else:
+            total = (await conn.fetchval(
+                "SELECT COUNT(*) FROM bookings WHERE status='active'"
+                " AND (date>? OR (date=? AND time>=?))",
+                today, today, current_time,
+            )) or 0
+            rows = await conn.fetch(
+                "SELECT * FROM bookings WHERE status='active'"
+                " AND (date>? OR (date=? AND time>=?)) ORDER BY date, time LIMIT ? OFFSET ?",
+                today, today, current_time, limit, offset,
+            )
+        return list(rows), int(total)
+
+
 
 async def get_past_bookings_for_completion() -> list[dict]:
     now = get_now(config.TIMEZONE)
@@ -550,9 +583,18 @@ async def export_bookings_csv() -> list[dict]:
 
 async def cleanup_old_bookings(days: int = 90) -> int:
     cutoff_date = (get_now(config.TIMEZONE) - timedelta(days=days)).strftime("%Y-%m-%d")
-    sql = "DELETE FROM bookings WHERE date < ? AND status IN ('cancelled', 'completed')"
     async with _db.acquire() as conn:
-        return await conn.execute_count(sql, cutoff_date)
+        # MED-005 FIX: Delete orphaned reviews before deleting old bookings
+        await conn.execute(
+            "DELETE FROM reviews WHERE booking_id IN "
+            "(SELECT id FROM bookings WHERE date < ? AND status IN ('cancelled', 'completed'))",
+            cutoff_date,
+        )
+        await conn.commit()
+        return await conn.execute_count(
+            "DELETE FROM bookings WHERE date < ? AND status IN ('cancelled', 'completed')",
+            cutoff_date,
+        )
 
 
 async def has_active_booking(telegram_id: int) -> bool:
@@ -625,6 +667,19 @@ async def get_all_waitlist() -> list[dict]:
         return await conn.fetch("SELECT * FROM waitlist ORDER BY created_at")
 
 
+async def get_all_waitlist_paged(offset: int = 0, limit: int = 15):
+    """L-7 FIX: SQL-level pagination for admin waitlist page.
+    Returns (page_items: list[dict], total: int).
+    """
+    async with _db.acquire() as conn:
+        if _db.is_postgres():
+            total = (await conn.fetchval("SELECT COUNT(*) FROM waitlist")) or 0
+            rows = await conn.fetch("SELECT * FROM waitlist ORDER BY created_at LIMIT $1 OFFSET $2", limit, offset)
+        else:
+            total = (await conn.fetchval("SELECT COUNT(*) FROM waitlist")) or 0
+            rows = await conn.fetch("SELECT * FROM waitlist ORDER BY created_at LIMIT ? OFFSET ?", limit, offset)
+        return list(rows), int(total)
+
 async def get_user_waitlist(telegram_id: int) -> list[dict]:
     async with _db.acquire() as conn:
         return await conn.fetch(
@@ -688,6 +743,36 @@ async def add_bonus(telegram_id: int, amount: int) -> bool:
         await conn.commit()
         return True
 
+
+
+
+
+
+async def spend_bonus(telegram_id: int, amount: int) -> bool:
+
+    """CRIT-002 FIX: Deduct bonuses from user loyalty balance.
+
+    Returns False if user has insufficient bonuses."""
+
+    async with _db.acquire() as conn:
+
+        row = await conn.fetchrow("SELECT bonuses FROM loyalty WHERE telegram_id=?", telegram_id)
+
+        if not row or (row["bonuses"] or 0) < amount:
+
+            return False
+
+        await conn.execute(
+
+            "UPDATE loyalty SET bonuses=bonuses-?, updated_at=? WHERE telegram_id=?",
+
+            amount, get_now(config.TIMEZONE).isoformat(), telegram_id,
+
+        )
+
+        await conn.commit()
+
+        return True
 
 async def get_loyalty(telegram_id: int) -> dict | None:
     async with _db.acquire() as conn:
@@ -1108,10 +1193,20 @@ async def get_all_scheduler_jobs() -> list[dict]:
 
 
 async def delete_old_scheduler_jobs():
+    # L-2 FIX: also remove jobs for bookings that are no longer active
     async with _db.acquire() as conn:
+        # Remove past-due jobs
         await conn.execute(
             "DELETE FROM scheduler_jobs WHERE run_date < ?",
             get_now(config.TIMEZONE).isoformat(),
+        )
+        # Remove orphan jobs whose booking is completed or cancelled
+        await conn.execute(
+            "DELETE FROM scheduler_jobs WHERE booking_id IN ("
+            "  SELECT sj.booking_id FROM scheduler_jobs sj"
+            "  LEFT JOIN bookings b ON b.id = sj.booking_id"
+            "  WHERE b.id IS NULL OR b.status != 'active'"
+            ")"
         )
         await conn.commit()
 

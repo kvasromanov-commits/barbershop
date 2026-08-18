@@ -1,7 +1,7 @@
 
 """Tests for updated backup.py: gzip output and PG mock."""
 import gzip, os, pytest, sys, pathlib
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
@@ -56,23 +56,31 @@ class TestSqliteBackupGzip:
 
 class TestPostgresBackupMock:
 
-    def test_calls_asyncio_run_when_database_url_set(self, tmp_path):
+    def _mock_loop(self, return_value):
+        from unittest.mock import MagicMock
+        loop = MagicMock()
+        loop.run_until_complete = MagicMock(return_value=return_value)
+        loop.close = MagicMock()
+        return loop
+
+    def test_calls_new_event_loop_when_database_url_set(self, tmp_path):
+        # H-3 FIX: backup.py uses asyncio.new_event_loop() instead of asyncio.run()
         import backup
+        loop = self._mock_loop(True)
         with patch("backup._BACKUP_DIR", str(tmp_path / "backups")), \
              patch("backup.os.getenv", return_value="postgresql://localhost/test"), \
-             patch("backup.asyncio.run") as mock_run:
-            mock_run.return_value = True
+             patch("backup.asyncio.new_event_loop", return_value=loop):
             result = backup.backup_database()
-        assert mock_run.called
+        assert loop.run_until_complete.called
         assert result is not None
         assert result.endswith(".sql.gz")
 
     def test_returns_none_when_pg_dump_fails(self, tmp_path):
         import backup
+        loop = self._mock_loop(False)
         with patch("backup._BACKUP_DIR", str(tmp_path / "backups")), \
              patch("backup.os.getenv", return_value="postgresql://localhost/test"), \
-             patch("backup.asyncio.run") as mock_run:
-            mock_run.return_value = False
+             patch("backup.asyncio.new_event_loop", return_value=loop):
             result = backup.backup_database()
         assert result is None
 

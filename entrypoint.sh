@@ -8,7 +8,8 @@ set -e
 # ─────────────────────────────────────────────────────────────────────────────
 
 mkdir -p /app/data /app/backups /app/logs
-chmod 777 /app/data /app/backups /app/logs
+# H-1 FIX: 755 is sufficient — owner (root) can write, others can only read/exec
+chmod 755 /app/data /app/backups /app/logs
 
 echo "[entrypoint] Permissions fixed:"
 ls -la /app/ | grep -E "data|backups|logs"

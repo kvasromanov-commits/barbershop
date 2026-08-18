@@ -115,15 +115,13 @@ async def cb_admin_bookings_page(callback: CallbackQuery):
 async def _show_admin_bookings_page(callback, offset: int = 0):
     PAGE = 5  # CRIT-03 FIX: 5 per page to fit manage buttons within Telegram limits
     try:
-        bookings = await storage.get_upcoming_bookings()
-        active = [b for b in bookings if b["status"] == "active"]
-        total = len(active)
-        page_items = active[offset:offset + PAGE]
+        # HIGH-003 FIX: SQL-level pagination via get_upcoming_bookings_paged
+        page_items, total = await storage.get_upcoming_bookings_paged(offset=offset, limit=PAGE)
         text = f"{E.LIST} Активные записи ({total} всего):\n\n"
         for b in page_items:
             text += f"{E.ID} <code>{b['id']}</code>: {keyboards._format_date(b['date'])} {b['time']}\n"
             text += f"   \u2192 {html.escape(b['name'])} / {html.escape(b['master'])}\n"
-        if not active:
+        if not page_items:
             text += f"{E.EMPTY} Нет активных записей.\n"
         kb_rows = []
         for b in page_items:
@@ -903,6 +901,24 @@ async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
                     )
                 except Exception as _me:
                     logger.error(f"Failed to notify master on admin cancel: {_me}")
+            # CRIT-004 FIX: Notify waitlist users when admin cancels a booking
+            try:
+                _wl_entries = await storage.get_waitlist_for_slot(booking["date"], booking["time"], booking["master"])
+                for _wl in _wl_entries:
+                    try:
+                        _wl_date = keyboards._format_date(booking["date"])
+                        _wl_text = (
+                            f"{E.STAR} <b>Освободилось время!</b>\n\n"
+                            f"{E.CALENDAR} {_wl_date} в {booking['time']}\n"
+                            f"{E.SCISSORS} Мастер: {html.escape(booking['master'])}\n\n"
+                            f"{E.IDEA} Вы можете записаться на это время!"
+                        )
+                        await bot.send_message(_wl["telegram_id"], _wl_text, parse_mode="HTML")
+                        await storage.update_waitlist_status(_wl["id"], "offered")
+                    except Exception as _wle:
+                        logger.error(f"Failed to notify waitlist {_wl['telegram_id']}: {_wle}")
+            except Exception as _wle:
+                logger.error(f"Waitlist notify failed on admin cancel: {_wle}")
             await edit_with_retry(callback.message, f"{E.CHECK} <b>Запись отменена</b>\n\n{E.ID} <code>{booking_id}</code>", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
         else:
             await callback.answer("Запись не найдена или уже не активна", show_alert=True)
@@ -984,16 +1000,14 @@ async def cb_admin_waitlist_page(callback: CallbackQuery):
 
 
 async def _show_admin_waitlist_page(callback, offset: int = 0):
-    """HIGH-06 FIX: Paginated waitlist to avoid 4096-char Telegram limit."""
+    """L-7 FIX: SQL-level pagination for waitlist (no full table in memory)."""
     PAGE = 15
     try:
-        waitlist = await storage.get_all_waitlist()
-        total = len(waitlist)
-        page_items = waitlist[offset:offset + PAGE]
+        page_items, total = await storage.get_all_waitlist_paged(offset=offset, limit=PAGE)
         text = f"{E.RELOAD} Список ожидания ({total} всего):\n\n"
         for w in page_items:
             text += f"{E.USER} {html.escape(w['name'])}: {keyboards._format_date(w['date'])} {w['time']} — {html.escape(w['master'])} ({html.escape(w['service'])}) [{w['status']}]\n"
-        if not waitlist:
+        if not page_items:
             text += f"{E.EMPTY} Список ожидания пуст.\n"
         nav_buttons = []
         if offset > 0:

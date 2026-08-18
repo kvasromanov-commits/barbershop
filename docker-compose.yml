@@ -1,21 +1,44 @@
 version: "3.8"
 
 services:
+  # L-3 FIX: local dev PostgreSQL; set DATABASE_URL=postgresql://barbershop:changeme@db:5432/barbershop
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: barbershop
+      POSTGRES_USER: barbershop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - barbershop_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barbershop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   bot:
     build: .
     restart: unless-stopped
     env_file:
       - .env
+    depends_on:
+      db:
+        condition: service_healthy
     volumes:
       - barbershop_data:/app/data
       - barbershop_backups:/app/backups
-    # LOW-01 FIX: healthcheck so Docker can detect a hung process
+    # H-2 FIX: check bot process is alive, not just that a file can be created
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; open('/app/data/.healthcheck','w').close()"]
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import subprocess,sys; r=subprocess.run([\"pgrep\",\"-f\",\"bot.py\"],capture_output=True); sys.exit(0 if r.returncode==0 else 1)"
       interval: 60s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     logging:
       driver: json-file
       options:
@@ -25,3 +48,4 @@ services:
 volumes:
   barbershop_data:
   barbershop_backups:
+  barbershop_pgdata:

@@ -98,22 +98,44 @@ async def cmd_start(message: Message, state: FSMContext):
 
 @router.message(ContactStates.waiting_contact)
 async def handle_contact(message: Message, state: FSMContext):
+    phone = None
     if message.contact:
         phone = message.contact.phone_number
+    elif message.text:
+        # MED-001 FIX: Allow manual phone number input with validation
+        raw = message.text.strip()
+        cleaned = re.sub(r"[\s\-\(\)]", "", raw)
+        if re.match(r"^\+?[7-8]\d{10}$", cleaned) or re.match(r"^\+?\d{10,15}$", cleaned):
+            # Normalize: ensure starts with +
+            if cleaned.startswith("8") and len(cleaned) == 11:
+                cleaned = "+7" + cleaned[1:]
+            elif not cleaned.startswith("+"):
+                cleaned = "+" + cleaned
+            phone = cleaned
+        else:
+            await send_with_retry(
+                message.bot, message.chat.id,
+                f"{E.CROSS} Неверный формат номера.\n"
+                f"Введите в формате: <code>+7 700 123 45 67</code>\n"
+                f"Или нажмите кнопку «Поделиться номером».",
+                parse_mode="HTML",
+            )
+            return
+    else:
+        await send_with_retry(
+            message.bot, message.chat.id,
+            f"{E.CROSS} Пожалуйста, введите номер телефона или нажмите кнопку «Поделиться номером».",
+            parse_mode="HTML",
+        )
+        return
+
+    if phone:
         await storage.save_user(
             message.from_user.id,
             phone=phone,
             username=message.from_user.username or "",
             first_name=message.from_user.first_name or "",
         )
-    else:
-        # Только кнопка Telegram, ручной ввод отключён
-        await send_with_retry(
-            message.bot, message.chat.id,
-            f"{E.CROSS} Пожалуйста, нажмите кнопку «Поделиться номером».",
-            parse_mode="HTML",
-        )
-        return
 
     await state.clear()
     # BUG-PHONE FIX: сначала убираем ReplyKeyboard (кнопку шаринга номера), затем показываем inline-меню

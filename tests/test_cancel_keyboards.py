@@ -52,6 +52,8 @@ async def test_cancel_clears_fsm():
     msg = make_msg("/cancel")
     state = AsyncMock()
     state.get_state = AsyncMock(return_value="SomeState:step")
+    # L-6 FIX: explicitly return empty dict so data.get() doesn't produce unawaited coroutines
+    state.get_data = AsyncMock(return_value={})
     state.clear = AsyncMock()
     with patch("handlers.start.send_with_retry", new_callable=AsyncMock) as m:
         await cmd_cancel_universal(msg, state)

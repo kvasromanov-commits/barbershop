@@ -23,9 +23,51 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+# ---- FSM DATA VALIDATION HELPER ----------------------------------------
+_REQUIRED = {
+    "cb_choose_date": ("master",),
+    "cb_choose_time": ("master", "date"),
+    "cb_add_to_waitlist": ("master", "date"),
+    "handle_enter_name": ("master", "date", "time", "service", "price"),
+    "cb_use_tg_name": ("master", "date", "time", "service", "price"),
+}
+
+
+async def _fsm_guard(callback_or_msg, state: FSMContext, *required_keys: str) -> dict | None:
+    """Return FSM data dict if all required_keys present, else answer user and return None.
+
+    Usage:
+        data = await _fsm_guard(callback, state, "master", "date")
+        if data is None: return  # handler aborts gracefully
+    """
+    data = await state.get_data()
+    missing = [k for k in required_keys if k not in data or data[k] is None]
+    if not missing:
+        return data
+    # State is corrupt / stale - redirect user gracefully
+    logger.warning("FSM guard: missing keys %s, data=%s", missing, list(data.keys()))
+    await state.clear()
+    text = (f"{E.RELOAD} Сессия устарела. "
+            f"Начните запись заново.")
+    from aiogram.types import CallbackQuery as _CQ, Message as _Msg
+    if isinstance(callback_or_msg, _CQ):
+        await callback_or_msg.answer(
+            text, show_alert=True
+        )
+        try:
+            await callback_or_msg.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        await callback_or_msg.message.answer(text, reply_markup=keyboards.main_menu_kb(), parse_mode="HTML")
+    else:
+        await callback_or_msg.answer(text, reply_markup=keyboards.main_menu_kb(), parse_mode="HTML")
+    return None
+# --------------------------------------------------------------------------
+
+
 
 # BUG-S1 FIX: Shared booking finalization (DRY)
-async def _finalize_booking(booking: dict, booking_id: str, send_fn, bot) -> None:
+async def _finalize_booking(booking: dict, booking_id: str, send_fn, bot, discount_info: str = "") -> None:
     """Send confirmation, notify admin/master, schedule reminders.
     send_fn: async callable(text, reply_markup, parse_mode)
     """
@@ -40,6 +82,9 @@ async def _finalize_booking(booking: dict, booking_id: str, send_fn, bot) -> Non
         price=price_fmt,
         address=html.escape(config.BARBERSHOP_ADDRESS),
     )
+    # CRIT-001/002 FIX: Append discount info if any discounts were applied
+    if discount_info:
+        text += "\n\n" + html.escape(discount_info)
     await send_fn(text, keyboards.booking_success_kb(booking_id), "HTML")
 
     admin_text = messages.ADMIN_BOOKING_NOTIFY.format(
@@ -69,6 +114,43 @@ async def _safe_edit(msg, text, reply_markup=None, parse_mode="HTML"):
             except Exception:
                 pass
 
+
+
+
+async def _apply_discounts(telegram_id: int, base_price: int) -> tuple[int, str]:
+    """CRIT-001/002 FIX: Apply loyalty discount and bonus spending.
+    Returns (final_price, info_text) where info_text describes applied discounts.
+    """
+    final_price = base_price
+    info_parts = []
+    try:
+        loyalty = await storage.get_loyalty(telegram_id)
+        if loyalty:
+            visits = loyalty.get("visits", 0) or 0
+            bonuses = loyalty.get("bonuses", 0) or 0
+
+            # CRIT-001: Loyalty discount — every LOYALTY_VISIT_INTERVAL completed visits
+            if visits > 0 and visits % config.LOYALTY_VISIT_INTERVAL == 0:
+                discount_amount = int(base_price * config.LOYALTY_DISCOUNT_PERCENT / 100)
+                final_price -= discount_amount
+                info_parts.append(
+                    f"⭐ Скидка лояльности {config.LOYALTY_DISCOUNT_PERCENT}% — −{discount_amount:,} ₸".replace(",", " ")
+                )
+
+            # CRIT-002: Bonus spending — up to 50% of final price
+            if bonuses > 0:
+                max_bonus_spend = max(0, final_price // 2)
+                bonus_spend = min(bonuses, max_bonus_spend)
+                if bonus_spend > 0:
+                    final_price -= bonus_spend
+                    info_parts.append(
+                        f"🎁 Бонусы списаны — −{bonus_spend:,} ₸ (осталось: {bonuses - bonus_spend})".replace(",", " ")
+                    )
+                    # Store bonus_spend in return so caller can call spend_bonus()
+                    return max(0, final_price), "".join(info_parts), bonus_spend
+    except Exception as e:
+        logger.warning(f"_apply_discounts failed for {telegram_id}: {e}")
+    return max(0, final_price), "".join(info_parts), 0
 
 class BookingStates(StatesGroup):
     choose_master = State()
@@ -354,7 +436,8 @@ async def cb_choose_date(callback: CallbackQuery, state: FSMContext):
     
     await state.update_data(date=date_str)
     await state.set_state(BookingStates.choose_time)
-    data = await state.get_data()
+    data = await _fsm_guard(callback, state, "master")
+    if data is None: return
     master = data["master"]
     
     try:
@@ -478,7 +561,12 @@ async def cb_use_tg_name(callback: CallbackQuery, state: FSMContext):
 
     telegram_id = callback.from_user.id
     await state.update_data(name=name)
-    data = await state.get_data()
+    data = await _fsm_guard(callback, state, "master", "date", "time", "service", "price")
+    if data is None: return
+
+    # CRIT-001/002 FIX: Apply loyalty discount and bonuses before saving
+    base_price = data["price"]
+    final_price, discount_info, bonus_spent = await _apply_discounts(telegram_id, base_price)
 
     booking = {
         "date": data["date"],
@@ -488,7 +576,7 @@ async def cb_use_tg_name(callback: CallbackQuery, state: FSMContext):
         "username": callback.from_user.username or "",
         "master": data["master"],
         "service": data["service"],
-        "price": data["price"],
+        "price": final_price,
     }
 
     try:
@@ -509,12 +597,20 @@ async def cb_use_tg_name(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    # Spend bonuses after successful booking
+    if bonus_spent > 0:
+        try:
+            await storage.spend_bonus(telegram_id, bonus_spent)
+        except Exception as e:
+            logger.error(f"Failed to spend bonus for {telegram_id}: {e}")
+
     # BUG-S1+C5 FIX: use shared _finalize_booking (DRY + BOOKING_CONFIRMED template)
     bot = callback.bot
     await _finalize_booking(
         booking, booking_id,
         lambda text, kb, pm: callback.message.answer(text, reply_markup=kb, parse_mode=pm),
-        bot
+        bot,
+        discount_info=discount_info,
     )
     await state.clear()
     await callback.answer()
@@ -526,6 +622,8 @@ async def cb_waitlist(callback: CallbackQuery, state: FSMContext):
     telegram_id = callback.from_user.id
     
     # BUG-012: Check if user already in waitlist for this slot
+    data = await _fsm_guard(callback, state, "master", "date", "service")
+    if data is None: return
     existing_waitlist = await storage.get_waitlist_for_slot(data["date"], time_str, data["master"])
     if any(wl["telegram_id"] == telegram_id and wl["status"] == "waiting" for wl in existing_waitlist):
         try:
@@ -596,6 +694,12 @@ async def handle_enter_name(message: Message, state: FSMContext):
     telegram_id = message.from_user.id
 
     # Task 1 FIX: создаём бронь сразу, без confirm-экрана (BookingStates.confirm не существует)
+    data = await _fsm_guard(message, state, "master", "date", "time", "service", "price")
+    if data is None: return
+    # CRIT-001/002 FIX: Apply loyalty discount and bonuses before saving
+    base_price = data["price"]
+    final_price, discount_info, bonus_spent = await _apply_discounts(telegram_id, base_price)
+
     booking = {
         "date": data["date"],
         "time": data["time"],
@@ -604,7 +708,7 @@ async def handle_enter_name(message: Message, state: FSMContext):
         "username": message.from_user.username or "",
         "master": data["master"],
         "service": data["service"],
-        "price": data["price"],
+        "price": final_price,
     }
 
     try:
@@ -623,12 +727,20 @@ async def handle_enter_name(message: Message, state: FSMContext):
         await state.set_state(BookingStates.choose_time)
         return
 
+    # Spend bonuses after successful booking
+    if bonus_spent > 0:
+        try:
+            await storage.spend_bonus(telegram_id, bonus_spent)
+        except Exception as e:
+            logger.error(f"Failed to spend bonus for {telegram_id}: {e}")
+
     # BUG-S1+C5 FIX: use shared _finalize_booking
     bot = message.bot
     await _finalize_booking(
         booking, booking_id,
         lambda text, kb, pm: message.answer(text, reply_markup=kb, parse_mode=pm),
-        bot
+        bot,
+        discount_info=discount_info,
     )
     await state.clear()
 

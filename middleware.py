@@ -34,6 +34,23 @@ class RateLimitMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         if user_id in config.ADMIN_IDS:
+            # M-7 FIX: admins still rate-limited at 5x the normal limit
+            # (prevents flood abuse if admin account is compromised)
+            admin_key = f"admin_{user_id}"
+            now2 = time.time()
+            if admin_key not in self.user_requests:
+                self.user_requests[admin_key] = []
+            self.user_requests[admin_key] = [
+                t for t in self.user_requests[admin_key] if (now2 - t) < self.window
+            ]
+            if len(self.user_requests[admin_key]) >= self.max_requests * 5:
+                logger.warning(f"Admin rate limit hit for {user_id}")
+                if isinstance(event, Message):
+                    await event.answer("Слишком много запросов.")
+                elif isinstance(event, CallbackQuery):
+                    await event.answer("Слишком много запросов.", show_alert=True)
+                return
+            self.user_requests[admin_key].append(now2)
             return await handler(event, data)
 
         now = time.time()

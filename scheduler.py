@@ -221,6 +221,17 @@ async def start_scheduler(bot):
         )
         logger.info("Scheduled daily cleanup of old bookings at 3:00 AM")
 
+        # MED-006 FIX: Schedule daily backup at 3:30 AM instead of running at startup
+        scheduler.add_job(
+            backup_database_job,
+            trigger='cron',
+            hour=3,
+            minute=30,
+            id='daily_backup',
+            replace_existing=True,
+        )
+        logger.info("Scheduled daily backup at 3:30 AM")
+
         # BUG-C4 FIX: Periodic cleanup of expired slot_locks every 2 minutes
         scheduler.add_job(
             cleanup_slot_locks_job,
@@ -334,3 +345,16 @@ def shutdown_scheduler():
             logger.info("Scheduler stopped")
         except Exception as e:
             logger.warning(f"Scheduler shutdown warning: {e}")
+
+
+async def backup_database_job():
+    """MED-006 FIX: Daily backup job at 3:30 AM - moved from startup to scheduler.
+    Runs in thread pool to avoid blocking event loop."""
+    import asyncio
+    from backup import backup_database, cleanup_old_backups
+    try:
+        await asyncio.to_thread(backup_database)
+        await asyncio.to_thread(cleanup_old_backups)
+        logger.info("Scheduled daily backup completed")
+    except Exception as e:
+        logger.error(f"Scheduled backup failed: {e}")
