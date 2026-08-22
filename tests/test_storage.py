@@ -232,12 +232,31 @@ class TestSlotLocks:
         assert deleted == 0
 
     async def test_startup_cleanup_clears_all(self, db):
+        """HIGH-1 regression guard: cleanup_slot_locks_on_startup must
+        remove EXPIRED locks but preserve any whose expires_at is in the
+        future (test by inserting an already-expired lock)."""
+        import storage, aiosqlite, config
+        from datetime import timedelta
+        # Past TTL → the lock is already expired at startup time.
+        await storage.create_slot_lock(
+            "2026-12-01", "10:00", "Alibek", ttl_minutes=-10,
+        )
+        await storage.cleanup_slot_locks_on_startup()
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            c = await conn.execute("SELECT COUNT(*) FROM slot_locks")
+            assert (await c.fetchone())[0] == 0, \
+                "expired locks must be removed by startup cleanup"
+
+    async def test_startup_cleanup_keeps_active_locks(self, db):
+        """HIGH-1 regression guard: a fresh lock must NOT be removed by
+        startup cleanup — that was the original bug."""
         import storage, aiosqlite, config
         await storage.create_slot_lock("2026-12-01", "10:00", "Alibek")
         await storage.cleanup_slot_locks_on_startup()
         async with aiosqlite.connect(config.DB_PATH) as conn:
             c = await conn.execute("SELECT COUNT(*) FROM slot_locks")
-            assert (await c.fetchone())[0] == 0
+            assert (await c.fetchone())[0] == 1, \
+                "active locks must survive startup cleanup"
 
 
 # ============================================================

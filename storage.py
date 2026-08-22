@@ -384,7 +384,13 @@ async def get_user(telegram_id: int) -> dict | None:
 # Bookings
 # ======================================================================
 
-async def save_booking(booking: dict) -> str | None:
+async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
+    """Save a booking. Returns booking_id (12-char hex) or None on conflict.
+
+    HIGH-2 FIX: When ``bonus_spent`` > 0, the loyalty deduction runs in the
+    SAME transaction as the INSERT. If anything rolls back (slot conflict,
+    integrity error) the user's bonuses stay untouched — no orphaned charges.
+    """
     async with _db.acquire() as conn:
         async with conn.transaction():
             now = get_now(config.TIMEZONE).isoformat()
@@ -399,6 +405,19 @@ async def save_booking(booking: dict) -> str | None:
             )
             if existing:
                 return None
+
+            # HIGH-2: deduct bonuses atomically BEFORE we commit.
+            # Bail out of the whole transaction (no INSERT) if balance is short.
+            if bonus_spent and bonus_spent > 0:
+                tgid = int(booking["telegram_id"])
+                rows = await conn.execute_count(
+                    "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? "
+                    "WHERE telegram_id = ? AND bonuses >= ?",
+                    int(bonus_spent), now, tgid, int(bonus_spent),
+                )
+                if rows == 0:
+                    # User doesn't have enough bonuses — refuse the booking.
+                    return None
 
             # TTL lock (5 min)
             lock_expires = (get_now(config.TIMEZONE) + timedelta(minutes=5)).isoformat()
@@ -727,34 +746,58 @@ async def get_user_waitlist_count(telegram_id: int) -> int:
 # ======================================================================
 
 async def update_loyalty(telegram_id: int, name: str = "") -> int:
+    """BUG-3 / atomic-increment fix.
+
+    Original implementation did a read-then-write (SELECT visits, then
+    UPDATE visits=?). Under concurrent calls (e.g. two bookings auto-
+    completing for the same user at the same instant) both SELECTs
+    could read the same value and both UPDATEs would write the same
+    value, losing one increment.
+
+    New implementation:
+      1. Atomic UPDATE visits=visits+1 — returns 0 rows if user has no
+         loyalty row yet.
+      2. If 0 rows, INSERT a new row with visits=1 (atomic via
+         INSERT OR IGNORE / ON CONFLICT DO NOTHING).
+      3. SELECT the current visits count and return it.
+
+    The atomic increment is correct under any concurrency level, and the
+    INSERT OR IGNORE handles the case where another process inserted
+    between step 1 and step 2 — the row will still exist with visits=1.
+    """
+    now = get_now(config.TIMEZONE).isoformat()
     async with _db.acquire() as conn:
         async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT visits FROM loyalty WHERE telegram_id=?", telegram_id
+            # Step 1: atomic increment if the row already exists.
+            rows = await conn.execute_count(
+                "UPDATE loyalty SET visits=visits+1, updated_at=? WHERE telegram_id=?",
+                now, telegram_id,
             )
-            now = get_now(config.TIMEZONE).isoformat()
-            if row:
-                visits = row["visits"] + 1
-                await conn.execute(
-                    "UPDATE loyalty SET visits=?, updated_at=? WHERE telegram_id=?",
-                    visits, now, telegram_id,
-                )
-            else:
-                visits = 1
+            if rows == 0:
+                # Step 2: row did not exist — create it with visits=1.
                 ref_code = uuid.uuid4().hex[:8]
                 if _db.is_postgres():
                     await conn.execute(
-                        "INSERT INTO loyalty (telegram_id, name, visits, bonuses, ref_code, updated_at) "
-                        "VALUES (?, ?, ?, 0, ?, ?) ON CONFLICT DO NOTHING",
-                        telegram_id, name, visits, ref_code, now,
+                        "INSERT INTO loyalty "
+                        "(telegram_id, name, visits, bonuses, ref_code, updated_at) "
+                        "VALUES (?, ?, 1, 0, ?, ?) ON CONFLICT DO NOTHING",
+                        telegram_id, name, ref_code, now,
                     )
                 else:
                     await conn.execute(
-                        "INSERT OR IGNORE INTO loyalty (telegram_id, name, visits, bonuses, ref_code, updated_at) "
-                        "VALUES (?, ?, ?, 0, ?, ?)",
-                        telegram_id, name, visits, ref_code, now,
+                        "INSERT OR IGNORE INTO loyalty "
+                        "(telegram_id, name, visits, bonuses, ref_code, updated_at) "
+                        "VALUES (?, ?, 1, 0, ?, ?)",
+                        telegram_id, name, ref_code, now,
                     )
-            return visits
+
+            # Step 3: read back the current visits value to keep the
+            # public contract ("returns visits after this call").
+            row = await conn.fetchrow(
+                "SELECT visits FROM loyalty WHERE telegram_id=?",
+                telegram_id,
+            )
+            return row["visits"] if row else 0
 
 
 async def add_bonus(telegram_id: int, amount: int) -> bool:
@@ -775,30 +818,26 @@ async def add_bonus(telegram_id: int, amount: int) -> bool:
 
 
 async def spend_bonus(telegram_id: int, amount: int) -> bool:
+    """HIGH-2 FIX: Atomic deduction — UPDATE … WHERE bonuses >= amount.
 
-    """CRIT-002 FIX: Deduct bonuses from user loyalty balance.
-
-    Returns False if user has insufficient bonuses."""
-
-    async with _db.acquire() as conn:
-
-        row = await conn.fetchrow("SELECT bonuses FROM loyalty WHERE telegram_id=?", telegram_id)
-
-        if not row or (row["bonuses"] or 0) < amount:
-
-            return False
-
-        await conn.execute(
-
-            "UPDATE loyalty SET bonuses=bonuses-?, updated_at=? WHERE telegram_id=?",
-
-            amount, get_now(config.TIMEZONE).isoformat(), telegram_id,
-
-        )
-
-        await conn.commit()
-
-        return True
+    Returns True if the deduction succeeded, False if balance was short.
+    Avoids the read-then-write race that allowed double-spending when two
+    bookings raced on the same account (each read >=0, each wrote -N).
+    """
+    if not amount or amount <= 0:
+        return False
+    try:
+        now = get_now(config.TIMEZONE).isoformat()
+        async with _db.acquire() as conn:
+            rows = await conn.execute_count(
+                "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? "
+                "WHERE telegram_id = ? AND bonuses >= ?",
+                int(amount), now, int(telegram_id), int(amount),
+            )
+            return rows > 0
+    except Exception as e:
+        logger.error(f"spend_bonus failed for {telegram_id}/{amount}: {e}")
+        return False
 
 async def get_loyalty(telegram_id: int) -> dict | None:
     async with _db.acquire() as conn:
@@ -1308,11 +1347,22 @@ async def release_slot_lock(date: str, time: str, master: str):
 
 
 async def cleanup_slot_locks_on_startup():
+    """HIGH-1 FIX: only delete EXPIRED slot_locks (WHERE expires_at < now).
+
+    Previously this issued an unconditional DELETE FROM slot_locks, which on a
+    blue/green deploy wiped *valid* locks of the other instance and caused
+    races (user A thought the slot was his, user B grabbed it via the new
+    instance). Schema reference: slot_locks.expires_at is ISO-8601 TEXT.
+    """
     try:
+        now = get_now(config.TIMEZONE).isoformat()
         async with _db.acquire() as conn:
-            await conn.execute("DELETE FROM slot_locks")
+            await conn.execute(
+                "DELETE FROM slot_locks WHERE expires_at < ?",
+                now,
+            )
             await conn.commit()
-            logger.info("slot_locks cleared on startup")
+            logger.info("expired slot_locks cleared on startup")
     except Exception as e:
         logger.warning(f"Failed to cleanup slot_locks: {e}")
 

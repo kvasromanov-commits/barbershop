@@ -1,5 +1,5 @@
 import html as html_module
-from emoji_config import E
+from emoji_config import E, P
 
 
 def welcome_text(name: str) -> str:
@@ -322,6 +322,17 @@ INVITE_FRIEND = (
 INVITE_FRIEND_SHARE = (
     f"{E.BARBER} Я стригусь в <b>{{name}}</b>!\n\n"
     f"{E.SCISSORS} Профессиональные мастера, удобная онлайн-запись.\n"
+    "Записывайся и получи первую скидку!\n\n"
+    "{link}"
+)
+
+# CRIT-1 FIX: Plain-text version for Telegram inline (switch_inline_query),
+# which does NOT render <b>/<tg-emoji> markup. Uses Unicode emojis (P.*)
+# and bold is conveyed only by emoji emphasis, not markup.
+# IMPORTANT: do NOT introduce any '<' except as part of a Telegram link.
+INVITE_FRIEND_SHARE_PLAIN = (
+    f"{P.BARBER} Я стригусь в {{name}}!\n\n"
+    f"{P.SCISSORS} Профессиональные мастера, удобная онлайн-запись.\n"
     "Записывайся и получи первую скидку!\n\n"
     "{link}"
 )

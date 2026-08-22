@@ -139,6 +139,10 @@ class TestCbChooseDate:
         cb.answer.assert_called()
 
     async def test_no_free_slots(self, db):
+        """HIGH-4 regression guard: when no slots are free the handler must
+        render a fallback keyboard (with waitlist + "Назад" buttons) so the
+        user is not stranded on the date picker.
+        """
         import handlers.booking as bk, storage
         from handlers.booking import BookingStates
         from datetime import datetime, timedelta
@@ -149,7 +153,25 @@ class TestCbChooseDate:
         fsm = make_fsm(state=BookingStates.choose_date.state, data={"master": "Alibek"})
         with patch("handlers.booking._get_available_slots", AsyncMock(return_value={"10:00": "busy"})):
             await bk.cb_choose_date(cb, fsm)
-        cb.answer.assert_called()
+        # Must NOT be an alert — old behavior was an alert + silent return
+        # that left the user stranded on the date picker.
+        if cb.answer.call_args:
+            kwargs = cb.answer.call_args.kwargs
+            assert not kwargs.get("show_alert"), \
+                "no-free-slots must not show a blocking alert; use a keyboard fallback"
+        # Must edit the message with a keyboard that has the waitlist option.
+        assert cb.message.edit_text.called, \
+            "no-free-slots must edit the message with a fallback keyboard"
+        edit_kwargs = cb.message.edit_text.call_args.kwargs
+        kb = edit_kwargs.get("reply_markup")
+        assert kb is not None, "fallback keyboard missing"
+        kb_data = []
+        for row in kb.inline_keyboard:
+            for btn in row:
+                kb_data.append(btn.callback_data)
+        assert "go_to_waitlist" in kb_data, "waitlist option missing"
+        assert "back_to_date" in kb_data or "back_to_service" in kb_data, \
+            "'Назад' option missing"
 
 class TestHandleEnterName:
 

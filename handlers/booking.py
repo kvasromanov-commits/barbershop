@@ -450,13 +450,10 @@ async def cb_choose_date(callback: CallbackQuery, state: FSMContext):
     free_count = sum(1 for status in slots.values() if status == "free")
     busy_count = sum(1 for status in slots.values() if status == "busy")
     
-    if not any(v == "free" for v in slots.values()):
-        await callback.answer(
-            "На сегодня свободных слотов нет. Выберите другой день.",
-            show_alert=True
-        )
-        return
-    
+    # HIGH-4 FIX: don't silently drop when no free slots — let
+    # time_slots_kb render its waitlist + "Назад" fallback so the user
+    # can either join the waitlist or pick another date. The earlier
+    # show_alert + return left users stuck on the date-picker keyboard.
     date_formatted = keyboards._format_date(date_str)
     text = messages.date_selected(date_formatted)
     text = text.replace("Выберите свободный слот:", f"Свободно: {free_count} | Занято: {busy_count}\n\nВыберите свободный слот:")
@@ -580,7 +577,10 @@ async def cb_use_tg_name(callback: CallbackQuery, state: FSMContext):
     }
 
     try:
-        booking_id = await storage.save_booking(booking)
+        # HIGH-2 FIX: pass bonus_spent into save_booking so the deduction
+        # happens inside the same DB transaction as the INSERT. If the
+        # transaction rolls back, the user's balance stays intact.
+        booking_id = await storage.save_booking(booking, bonus_spent=bonus_spent)
     except Exception as e:
         logger.error(f"Failed to save booking: {e}")
         await callback.message.answer(messages.ERROR, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
@@ -597,12 +597,9 @@ async def cb_use_tg_name(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # Spend bonuses after successful booking
-    if bonus_spent > 0:
-        try:
-            await storage.spend_bonus(telegram_id, bonus_spent)
-        except Exception as e:
-            logger.error(f"Failed to spend bonus for {telegram_id}: {e}")
+    # HIGH-2 FIX: bonus deduction already happened atomically inside save_booking.
+    # The previous separate spend_bonus() call was racy (booking could be inserted
+    # while bonuses remained unspent if the process crashed between the two calls).
 
     # BUG-S1+C5 FIX: use shared _finalize_booking (DRY + BOOKING_CONFIRMED template)
     bot = callback.bot
@@ -712,7 +709,10 @@ async def handle_enter_name(message: Message, state: FSMContext):
     }
 
     try:
-        booking_id = await storage.save_booking(booking)
+        # HIGH-2 FIX: pass bonus_spent into save_booking so the deduction
+        # happens inside the same DB transaction as the INSERT. If the
+        # transaction rolls back, the user's balance stays intact.
+        booking_id = await storage.save_booking(booking, bonus_spent=bonus_spent)
     except Exception as e:
         logger.error(f"Failed to save booking: {e}")
         await message.answer(messages.ERROR, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
@@ -727,12 +727,9 @@ async def handle_enter_name(message: Message, state: FSMContext):
         await state.set_state(BookingStates.choose_time)
         return
 
-    # Spend bonuses after successful booking
-    if bonus_spent > 0:
-        try:
-            await storage.spend_bonus(telegram_id, bonus_spent)
-        except Exception as e:
-            logger.error(f"Failed to spend bonus for {telegram_id}: {e}")
+    # HIGH-2 FIX: bonus deduction already happened atomically inside save_booking.
+    # The previous separate spend_bonus() call was racy and could leave the user
+    # with an unspent balance while the booking row existed.
 
     # BUG-S1+C5 FIX: use shared _finalize_booking
     bot = message.bot
@@ -829,8 +826,10 @@ async def cb_back_to_date(callback: CallbackQuery, state: FSMContext):
     
     text = messages.CHOOSE_DATE
     if data.get("service"):
-        # Добавляем информацию о выбранной услуге
-        text = f"{E.CHECK} {data['service']} — {data.get('price', 0):,} ₸\n\n".replace(",", " ") + text
+        # Добавляем информацию о выбранной услуге.
+        # CRIT-3 FIX (same class): service is admin-controlled; escape to keep
+        # this banner safe even if the catalogue ever ships a malformed entry.
+        text = f"{E.CHECK} {html.escape(str(data['service']))} — {int(data.get('price', 0)):,} ₸\n\n".replace(",", " ") + text
     
     await _safe_edit(callback.message,
             text,
@@ -981,11 +980,14 @@ async def cb_remind_cancel(callback: CallbackQuery, bot: Bot):
         for wl in waitlist:
             try:
                 text = messages.WAITLIST_OFFER.format(
-                    master=booking["master"],
+                    # CRIT-2/CRIT-3 FIX: master is admin/user-controlled and the
+                    # template contains <b>/<tg-emoji> markup; escape and force
+                    # parse_mode='HTML' so Telegram renders markup (not raw tags).
+                    master=html.escape(str(booking["master"])),
                     date=keyboards._format_date(booking["date"]),
                     time=booking["time"],
                 )
-                await bot.send_message(wl["telegram_id"], text)
+                await bot.send_message(wl["telegram_id"], text, parse_mode="HTML")
                 await storage.update_waitlist_status(wl["id"], "offered")
             except Exception as e:
                 logger.error(f"Failed to notify waitlist {wl['telegram_id']}: {e}")

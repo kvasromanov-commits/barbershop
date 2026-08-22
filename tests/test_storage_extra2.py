@@ -71,12 +71,25 @@ class TestSlotLockCleanup:
     """Lines 1168-1182: cleanup functions."""
 
     async def test_cleanup_slot_locks_on_startup(self, db):
+        """HIGH-1 regression: cleanup_slot_locks_on_startup must now only
+        remove EXPIRED locks (the original code unconditionally removed
+        everything, which broke blue/green deploys)."""
+        import storage
+        await storage.init_db()
+        # Insert a lock that is already past its TTL.
+        await storage.create_slot_lock("2026-12-01", "10:00", "Alibek", ttl_minutes=-10)
+        await storage.cleanup_slot_locks_on_startup()
+        locked = await storage.get_locked_slots("2026-12-01", "Alibek")
+        assert len(locked) == 0, "expired locks must be cleaned up"
+
+    async def test_cleanup_slot_locks_on_startup_keeps_active(self, db):
+        """HIGH-1 regression: a fresh (active) lock must NOT be removed."""
         import storage
         await storage.init_db()
         await storage.create_slot_lock("2026-12-01", "10:00", "Alibek")
         await storage.cleanup_slot_locks_on_startup()
         locked = await storage.get_locked_slots("2026-12-01", "Alibek")
-        assert len(locked) == 0
+        assert len(locked) == 1, "active locks must survive startup cleanup"
 
     async def test_cleanup_expired_slot_locks(self, db):
         import storage

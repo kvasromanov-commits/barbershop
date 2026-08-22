@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from aiogram import Router, F, Bot
 from aiogram.types import CallbackQuery, Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command
+from aiogram.filters import Command, BaseFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -22,6 +22,27 @@ from emoji_config import E
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+
+# MED-7 FIX: Router-level filter so a single forgotten `_is_admin` check in
+# a new handler cannot be exploited. Defense-in-depth on top of the existing
+# per-handler checks. Non-admin updates are silently dropped before they
+# reach any handler in this router.
+class AdminFilter(BaseFilter):
+    """Returns True only when the update comes from a user in
+    config.ADMIN_IDS. Applied to both message and callback_query updates
+    on the admin router.
+    """
+    async def __call__(self, event) -> bool:
+        user = getattr(event, "from_user", None)
+        return user is not None and user.id in config.ADMIN_IDS
+
+
+# Apply router-level gate. cmd_admin and cb_admin keep their _is_admin()
+# + ADMIN_ONLY feedback so the user still gets a friendly "no access"
+# message; all other handlers are now unreachable without admin.
+router.message.filter(AdminFilter())
+router.callback_query.filter(AdminFilter())
 
 
 def _is_admin(user_id: int) -> bool:
@@ -78,12 +99,15 @@ async def cb_admin_stats(callback: CallbackQuery):
         if by_master:
             text += "По мастерам:\n"
             for m in by_master:
-                text += f"  {m['master']}: {m['count']} записей, {m['revenue']} ₸\n"
+                # CRIT-3 FIX: master name is admin-controlled but visible to all
+                # users in the admin stats panel; escape to defang XSS/phishing.
+                text += f"  {html.escape(str(m['master']))}: {m['count']} записей, {m['revenue']} ₸\n"
         by_service = await storage.get_stats_by_service()
         if by_service:
             text += "По услугам:\n"
             for s in by_service:
-                text += f"  {s['service']}: {s['count']} записей, {s['revenue']} ₸\n"
+                # CRIT-3 FIX: service name is admin-controlled too.
+                text += f"  {html.escape(str(s['service']))}: {s['count']} записей, {s['revenue']} ₸\n"
         await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_kb(), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error in admin_stats: {e}")
@@ -1093,7 +1117,7 @@ async def cb_admin_loyalty(callback: CallbackQuery):
         page, total = await storage.get_loyalty_list_paged(offset=0, limit=50)
         text = f"{E.STAR} Клиенты с бонусами ({total} всего):\n\n"
         for l in page:
-            text += f"{E.USER} {l['name'] or 'Аноним'}: визитов {l['visits']}, бонусов {l['bonuses']}\n"
+            text += f"{E.USER} {html.escape(str(l['name'] or 'Аноним'))}: визитов {l['visits']}, бонусов {l['bonuses']}\n"
         if total == 0:
             text += f"{E.EMPTY} Нет данных о лояльности.\n"
         elif total > 50:

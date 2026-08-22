@@ -39,5 +39,8 @@ coverage.xml
 storage_sqlite_backup.py
 patch_fixes.py
 
+# Booking exports (test runs / ad-hoc admin export)
+scripts/*.csv
+
 # WorkBuddy internal cache (not source code)
 .workbuddy-ai/

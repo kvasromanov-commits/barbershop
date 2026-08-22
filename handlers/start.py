@@ -192,10 +192,12 @@ async def cb_my_bookings(callback: CallbackQuery):
     for i, b in enumerate(bookings, 1):
         date_str = keyboards._format_date(b['date'])
         text += f"<b>{i}. {date_str} в {b['time']}</b>\n"
-        text += f"   {E.MASTER} Мастер: {b['master']}\n"
-        text += f"   {E.BARBER} Услуга: {b['service']}\n"
+        # CRIT-3 FIX: master/service come from admin input or booking form.
+        # html.escape() prevents untrusted masters from injecting <b>/<a href=...>.
+        text += f"   {E.MASTER} Мастер: {html.escape(str(b['master']))}\n"
+        text += f"   {E.BARBER} Услуга: {html.escape(str(b['service']))}\n"
         text += f"   {E.MONEY} Цена: {b['price']:,} ₸\n".replace(",", " ")
-        text += f"   {E.ID} ID: <code>{b['id']}</code>\n\n"
+        text += f"   {E.ID} ID: <code>{html.escape(str(b['id']))}</code>\n\n"
     
     text += f"{E.POINT_DOWN} Выберите запись для подробностей:"
     
@@ -220,10 +222,11 @@ async def cb_booking_detail(callback: CallbackQuery):
     text = f"{E.LIST} <b>Детали записи</b>\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
-    text += f"{E.MASTER} <b>Мастер:</b> {booking['master']}\n"
-    text += f"{E.BARBER} <b>Услуга:</b> {booking['service']}\n"
+    # CRIT-3 FIX: escape master/service — same defence as in cb_my_bookings.
+    text += f"{E.MASTER} <b>Мастер:</b> {html.escape(str(booking['master']))}\n"
+    text += f"{E.BARBER} <b>Услуга:</b> {html.escape(str(booking['service']))}\n"
     text += f"{E.MONEY} <b>Цена:</b> {booking['price']:,} ₸\n".replace(",", " ")
-    text += f"{E.ID} <b>ID:</b> <code>{booking['id']}</code>\n\n"
+    text += f"{E.ID} <b>ID:</b> <code>{html.escape(str(booking['id']))}</code>\n\n"
     text += f"{E.WARNING} Хотите отменить эту запись?"
     
     await callback.message.edit_text(text, reply_markup=keyboards.booking_detail_kb(booking_id), parse_mode="HTML")
@@ -249,8 +252,12 @@ async def cb_cancel_book(callback: CallbackQuery):
     text += f"Вы действительно хотите отменить запись?\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
-    text += f"{E.MASTER} <b>Мастер:</b> {booking['master']}\n"
-    text += f"{E.BARBER} <b>Услуга:</b> {booking['service']}\n\n"
+    # CRIT-3 FIX: cb_cancel_book is a duplicate of cb_ask_cancel (same prefix
+    # semantics: confirm-before-cancel) and was missed by the original audit.
+    # html.escape() defangs <a href=...> phishing via admin-controlled master
+    # names.
+    text += f"{E.MASTER} <b>Мастер:</b> {html.escape(str(booking['master']))}\n"
+    text += f"{E.BARBER} <b>Услуга:</b> {html.escape(str(booking['service']))}\n\n"
     text += f"{E.IDEA} <b>Это действие нельзя отменить!</b>"
 
     try:
@@ -277,10 +284,11 @@ async def cb_ask_cancel(callback: CallbackQuery):
     text += f"Вы действительно хотите отменить запись?\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
-    text += f"{E.MASTER} <b>Мастер:</b> {booking['master']}\n"
-    text += f"{E.BARBER} <b>Услуга:</b> {booking['service']}\n\n"
+    # CRIT-3 FIX (same class): escape master/service in this confirmation flow too.
+    text += f"{E.MASTER} <b>Мастер:</b> {html.escape(str(booking['master']))}\n"
+    text += f"{E.BARBER} <b>Услуга:</b> {html.escape(str(booking['service']))}\n\n"
     text += f"{E.IDEA} <b>Это действие нельзя отменить!</b>"
-    
+
     await callback.message.edit_text(text, reply_markup=keyboards.confirm_cancel_kb(booking_id), parse_mode="HTML")
     await callback.answer()
 
@@ -296,8 +304,9 @@ async def cb_confirm_cancel(callback: CallbackQuery):
         date_str = keyboards._format_date(booking['date'])
         text = f"{E.CHECK} <b>Запись отменена!</b>\n\n"
         text += f"{E.CALENDAR} {date_str} в {booking['time']}\n"
-        text += f"{E.MASTER} Мастер: {booking['master']}\n"
-        text += f"{E.BARBER} Услуга: {booking['service']}\n\n"
+        # CRIT-3 FIX (same class): escape in cancellation success message too.
+        text += f"{E.MASTER} Мастер: {html.escape(str(booking['master']))}\n"
+        text += f"{E.BARBER} Услуга: {html.escape(str(booking['service']))}\n\n"
         text += f"{E.IDEA} Вы можете записаться снова в любое время!"
         
         await callback.message.edit_text(text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
@@ -321,7 +330,8 @@ async def cb_confirm_cancel(callback: CallbackQuery):
             try:
                 wl_text = f"{E.STAR} <b>Освободилось время!</b>\n\n"
                 wl_text += f"{E.CALENDAR} {date_str} в {booking['time']}\n"
-                wl_text += f"{E.MASTER} Мастер: {booking['master']}\n\n"
+                # CRIT-3 FIX (same class): escape in waitlist notify on cancel too.
+                wl_text += f"{E.MASTER} Мастер: {html.escape(str(booking['master']))}\n\n"
                 wl_text += f"{E.IDEA} Вы можете записаться на это время!"
                 await bot.send_message(wl["telegram_id"], wl_text, parse_mode="HTML")
                 await storage.update_waitlist_status(wl["id"], "offered")
@@ -342,8 +352,10 @@ async def cmd_me(message: Message):
     bookings = await storage.get_user_bookings(message.from_user.id)
     
     text = f"{E.USER} <b>Ваш профиль</b>\n\n"
-    text += f"<b>Имя:</b> {user['first_name']}\n"
-    text += f"<b>Телефон:</b> {user['phone'] or 'не указан'}\n"
+    # CRIT-3 FIX (same class): first_name is Telegram-controlled but visible
+    # in HTML — escape to defang XSS in case Telegram ever lets it through.
+    text += f"<b>Имя:</b> {html.escape(str(user['first_name']))}\n"
+    text += f"<b>Телефон:</b> {html.escape(str(user['phone'] or 'не указан'))}\n"
     text += f"<b>Активных записей:</b> {len(bookings)}\n\n"
 
     loyalty = await storage.get_loyalty(message.from_user.id)
@@ -370,7 +382,8 @@ async def cmd_me(message: Message):
         for b in bookings:
             date_str = keyboards._format_date(b['date'])
             text += f"• {date_str} в {b['time']}\n"
-            text += f"  {E.MASTER} {b['master']} — {b['service']}\n\n"
+            # CRIT-3 FIX (same class): escape master/service here too.
+            text += f"  {E.MASTER} {html.escape(str(b['master']))} — {html.escape(str(b['service']))}\n\n"
 
     await send_with_retry(message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
 
@@ -380,9 +393,12 @@ async def cmd_master(message: Message):
     text = f"{E.MASTER} <b>Наши мастера:</b>\n\n"
     if config.MASTERS:
         for name, info in config.MASTERS.items():
-            text += f"<b>{name}</b>\n"
-            text += f"{E.CHART} Опыт: {info['experience']}\n"
-            text += f"{E.SCISSORS} Специализация: {info['specialization']}\n\n"
+            # CRIT-3 FIX (same class): MASTERS values are admin-edited but
+            # still rendered as HTML — escape to defang config typo /
+            # phishing injection via the masters list.
+            text += f"<b>{html.escape(str(name))}</b>\n"
+            text += f"{E.CHART} Опыт: {html.escape(str(info['experience']))}\n"
+            text += f"{E.SCISSORS} Специализация: {html.escape(str(info['specialization']))}\n\n"
         text += "👇 Выберите мастера для подробностей:"
     else:
         text = "Мастеров пока нет."
@@ -494,9 +510,10 @@ async def cb_invite_friend(callback: CallbackQuery):
             bonuses=bonuses,
         )
 
-        # INVITE_FRIEND_SHARE — для switch_inline_query (почти plain text, не HTML)
-        share_text = messages.INVITE_FRIEND_SHARE.format(
-            name=html.escape(config.BARBERSHOP_NAME),
+        # CRIT-1 FIX: Use PLAIN variant for switch_inline_query — Telegram inline
+        # does not render <b>/<tg-emoji>, so we'd expose raw tags to every sharer.
+        share_text = messages.INVITE_FRIEND_SHARE_PLAIN.format(
+            name=config.BARBERSHOP_NAME,
             link=ref_link,
         )
 
