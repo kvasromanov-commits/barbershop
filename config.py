@@ -38,6 +38,9 @@ TIMEZONE = os.getenv("TIMEZONE", "Asia/Almaty")
 DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "2"))
 DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "10"))
 DB_COMMAND_TIMEOUT = int(os.getenv("DB_COMMAND_TIMEOUT", "30"))
+# SEC-13 FIX: cap concurrent handler executions to protect the DB pool from a
+# global flood of updates. Defaults to a generous bound; tune via env if needed.
+GLOBAL_CONCURRENCY = int(os.getenv("GLOBAL_CONCURRENCY", "64"))
 
 # ========================================
 # НАСТРОИКИ БАРБЕРШОПА

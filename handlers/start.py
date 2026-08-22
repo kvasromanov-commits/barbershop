@@ -434,6 +434,16 @@ async def cmd_help(message: Message):
         f"<b>{E.PHONE} Если возникли вопросы:</b>",
         f"Используйте кнопку «{E.PHONE} Позвонить нам» в главном меню.",
     ]
+
+    # UX-9 FIX: admins get a hint about the admin panel command which is hidden
+    # from the default /help output.
+    if message.from_user.id in config.ADMIN_IDS:
+        lines += [
+            "",
+            f"<b>{E.LOCK} Команды администратора:</b>",
+            "• /admin - Панель управления ботом",
+        ]
+
     text = "\n".join(lines)
     await send_with_retry(message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
 

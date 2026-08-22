@@ -20,10 +20,52 @@ from middleware import (
     RateLimitMiddleware,
     AdminCheckMiddleware,
     RequestIDMiddleware,
+    GlobalConcurrencyMiddleware,
 )
 import keyboards
 from emoji_config import E
 from logging_config import configure_logging
+import html as _html
+
+logger = logging.getLogger(__name__)
+
+
+async def check_webhook_conflict(bot) -> str | None:
+    """BUG-6 FIX: detect an externally-configured webhook that would conflict
+    with polling mode.
+
+    Telegram only allows one way of receiving updates. If a webhook is still set
+    (e.g. from a previous webhook deployment) while this process polls, every
+    getUpdates call raises TelegramConflictError. We surface the conflict to
+    admins at startup so it is noticed and fixed instead of silently breaking
+    the bot. Returns the offending webhook url (str) if set, else None. Errors
+    are non-critical and swallowed.
+    """
+    try:
+        wh = await bot.get_webhook_info()
+    except Exception as e:  # network/API issues must not block startup
+        logger.warning(f"get_webhook_info failed (non-critical): {e}")
+        return None
+    if not wh.url:
+        return None
+    logger.warning(
+        f"Active external webhook detected: {wh.url!r} — bot runs in polling mode; "
+        f"getUpdates conflicts possible."
+    )
+    from config import ADMIN_IDS as _AIDS
+    for _aid in _AIDS:
+        try:
+            await bot.send_message(
+                _aid,
+                f"{E.WARNING} <b>Внимание:</b> обнаружен активный webhook "
+                f"<code>{_html.escape(wh.url)}</code>. Бот работает в режиме polling — "
+                f"возможен конфликт getUpdates (TelegramConflictError). "
+                f"Рекомендуется отключить webhook.",
+                parse_mode="HTML",
+            )
+        except Exception:
+            pass
+    return wh.url
 
 # HIGH-PRODUCTION: structured logging (JSON or human-readable).
 # Set LOG_JSON=1 in env for fluentbit/Loki/CloudWatch ingestion.
@@ -93,6 +135,11 @@ async def main():
     # BUG-004 FIX: Register RateLimitMiddleware to prevent flooding
     dp.message.middleware(RateLimitMiddleware(max_requests=20, window=60))
     dp.callback_query.middleware(RateLimitMiddleware(max_requests=20, window=60))
+
+    # SEC-13 FIX: bound global concurrent handler executions (DoS / pool exhaustion)
+    from config import GLOBAL_CONCURRENCY
+    dp.message.middleware(GlobalConcurrencyMiddleware(limit=GLOBAL_CONCURRENCY))
+    dp.callback_query.middleware(GlobalConcurrencyMiddleware(limit=GLOBAL_CONCURRENCY))
 
     # NEW-001 FIX: Register AdminCheckMiddleware to set is_admin in data
     dp.message.middleware(AdminCheckMiddleware())
@@ -261,6 +308,13 @@ async def main():
         logger.info("Webhook deleted, pending updates dropped")
     except Exception as e:
         logger.warning(f"delete_webhook failed (non-critical): {e}")
+
+    # BUG-6 FIX: surface any *external* webhook still configured — it would
+    # conflict with polling and cause TelegramConflictError.
+    try:
+        await check_webhook_conflict(bot)
+    except Exception as e:
+        logger.warning(f"check_webhook_conflict failed (non-critical): {e}")
 
     # DEPLOY FIX: Railway zero-downtime starts new container before stopping old.
     # Telegram allows only ONE getUpdates session -> TelegramConflictError.

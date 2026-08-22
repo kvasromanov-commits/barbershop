@@ -201,9 +201,10 @@ def remind_cancel_kb(booking_id: str) -> InlineKeyboardMarkup:
 
 
 def remind_2h_kb(booking_id: str) -> InlineKeyboardMarkup:
-    """2ч — только подтверждение, кнопка отмены убрана"""
+    """2ч — подтверждение присутствия + быстрая отмена (UX-7)."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Буду!", callback_data=f"remind_confirm:{booking_id}")],
+        [InlineKeyboardButton(text="Отменить запись", callback_data=f"remind_cancel:{booking_id}")],
     ])
 
 

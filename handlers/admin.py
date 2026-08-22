@@ -49,6 +49,28 @@ def _is_admin(user_id: int) -> bool:
     return user_id in config.ADMIN_IDS
 
 
+# MED-8 FIX: validate master/service names on input. Length is guarded below; this
+# additionally rejects characters that could break HTML markup or callback_data
+# generation (defense-in-depth — output is also html.escape'd, but a name with
+# `<`/`>`/`"` would still look wrong in menus and could spoof a link via <a href>).
+_DANGEROUS_NAME_CHARS = set('<>"`')
+
+
+def is_safe_entity_name(name: str, max_bytes: int = 40) -> tuple[bool, str]:
+    """Return (ok, error_message). Rejects empty, newline, dangerous-char, or
+    over-length names. ``max_bytes`` caps the UTF-8 byte length (Telegram's
+    64-byte callback_data limit, leaving room for prefixes)."""
+    if not name or not name.strip():
+        return False, "Имя не может быть пустым."
+    if "\n" in name or "\r" in name:
+        return False, "Имя не может содержать переносы строк."
+    if any(c in _DANGEROUS_NAME_CHARS for c in name):
+        return False, "Имя содержит недопустимые символы (< > \" `)."
+    if len(name.encode("utf-8")) > max_bytes:
+        return False, f"Имя слишком длинное (максимум {max_bytes} байт)."
+    return True, ""
+
+
 class AdminStates(StatesGroup):
     add_master = State()
     edit_master = State()
@@ -324,11 +346,12 @@ async def handle_add_master(message: Message, state: FSMContext):
         return
     name, experience, specialization = parts[0], parts[1], parts[2]
     
-    # Validate name length
-    if not name or len(name.encode("utf-8")) < 1 or len(name.encode("utf-8")) > 40:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Имя мастера должно содержать до 20 символов кириллицей или 40 символов латиницей (лимит Telegram 64 байта).", parse_mode="HTML")
+    # MED-8 FIX: validate name (length + dangerous chars)
+    ok, err = is_safe_entity_name(name, max_bytes=40)
+    if not ok:
+        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} {err}", parse_mode="HTML")
         return
-    
+
     config.MASTERS[name] = {"experience": experience, "specialization": specialization}
     try:
         await storage.save_master(name, experience, specialization)
@@ -382,11 +405,12 @@ async def handle_edit_master(message: Message, state: FSMContext):
         return
     name, experience, specialization = parts[0], parts[1], parts[2]
     
-    # Validate name length
-    if not name or len(name.encode("utf-8")) < 1 or len(name.encode("utf-8")) > 40:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Имя мастера должно содержать до 20 символов кириллицей или 40 символов латиницей (лимит Telegram 64 байта).", parse_mode="HTML")
+    # MED-8 FIX: validate name (length + dangerous chars)
+    ok, err = is_safe_entity_name(name, max_bytes=40)
+    if not ok:
+        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} {err}", parse_mode="HTML")
         return
-    
+
     if master_name in config.MASTERS:
         del config.MASTERS[master_name]
     config.MASTERS[name] = {"experience": experience, "specialization": specialization}
@@ -482,11 +506,12 @@ async def handle_add_service(message: Message, state: FSMContext):
         return
     name = parts[0].strip()
     
-    # HIGH-01 FIX: longest service prefix = 'admin_confirm_remove_service:' (29 bytes) → max 35 bytes
-    if not name or len(name.encode("utf-8")) < 1 or len(name.encode("utf-8")) > 35:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Название услуги слишком длинное. Максимум ~17 символов кириллицей или 35 латиницей.", parse_mode="HTML")
+    # MED-8 FIX: validate name (length + dangerous chars)
+    ok, err = is_safe_entity_name(name, max_bytes=35)
+    if not ok:
+        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} {err}", parse_mode="HTML")
         return
-    
+
     try:
         price = int(parts[1].strip())
     except ValueError:
@@ -554,11 +579,12 @@ async def handle_edit_service(message: Message, state: FSMContext):
         return
     name = parts[0].strip()
     
-    # HIGH-01 FIX: max service name = 64 - len("admin_confirm_remove_service:") = 35 bytes
-    if not name or len(name.encode("utf-8")) < 1 or len(name.encode("utf-8")) > 35:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Название услуги слишком длинное. Максимум ~17 символов кириллицей или 35 латиницей.", parse_mode="HTML")
+    # MED-8 FIX: validate name (length + dangerous chars)
+    ok, err = is_safe_entity_name(name, max_bytes=35)
+    if not ok:
+        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} {err}", parse_mode="HTML")
         return
-    
+
     try:
         price = int(parts[1].strip())
     except ValueError:

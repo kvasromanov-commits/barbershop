@@ -140,8 +140,13 @@ def test_admin_cancel_uses_premium_emoji():
     assert "E.CHECK" in src
     assert "E.ID" in src
 
-def test_help_hides_admin_command():
+def test_help_shows_admin_command_for_admins():
+    """UX-9: /help must mention /admin, but only rendered for admins at runtime
+    (gated behind config.ADMIN_IDS) so non-admins never see it."""
     from handlers import start
     import inspect
     src = inspect.getsource(start.cmd_help)
-    assert "• /admin" not in src
+    # Admin line exists in the builder...
+    assert "• /admin" in src
+    # ...and is gated so non-admins never receive it.
+    assert "config.ADMIN_IDS" in src

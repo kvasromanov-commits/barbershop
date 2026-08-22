@@ -127,3 +127,26 @@ class AdminCheckMiddleware(BaseMiddleware):
         else:
             data["is_admin"] = False
         return await handler(event, data)
+
+
+class GlobalConcurrencyMiddleware(BaseMiddleware):
+    """SEC-13 FIX: bound total concurrent handler executions.
+
+    Per-user rate limiting (RateLimitMiddleware) throttles abuse from a single
+    account, but cannot protect against a *global* flood (e.g. 10k users
+    firing at once) which would exhaust the DB connection pool (min=2, max=10)
+    and the single bot session. This middleware serializes the downstream
+    handler chain behind a semaphore, providing backpressure instead of letting
+    every update acquire a pool connection simultaneously.
+
+    The semaphore wraps the rest of the chain (handlers + inner middleware), so
+    a handler that awaits a long DB call holds the permit for that duration,
+    which is exactly the backpressure we want.
+    """
+    def __init__(self, limit: int = 64):
+        super().__init__()
+        self._sem = asyncio.Semaphore(max(1, limit))
+
+    async def __call__(self, handler, event, data):
+        async with self._sem:
+            return await handler(event, data)
