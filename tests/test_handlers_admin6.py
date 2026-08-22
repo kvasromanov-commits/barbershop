@@ -273,15 +273,13 @@ class TestAdminCancelBookingExtra:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_cancel_booking:x", user_id=555)
-        await adm.cb_admin_cancel_booking(cb, cb.bot)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_pre_cancel_non_admin(self):
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_pre_cancel:x", user_id=555)
-        await adm.cb_admin_pre_cancel(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
 
 class TestHandleWorkingHours:
@@ -338,8 +336,7 @@ class TestMasterSchedule:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="master_schedule:Alibek", user_id=555)
-        await adm.cb_master_schedule(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_not_found(self):
         import handlers.admin as adm
@@ -373,8 +370,7 @@ class TestSetMasterTg:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_set_master_tg:Alibek", user_id=555)
-        await adm.cb_admin_set_master_tg(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_not_found(self):
         import handlers.admin as adm
@@ -425,8 +421,7 @@ class TestMasterPricesNonAdmin:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="master_prices:Alibek", user_id=555)
-        await adm.cb_master_prices(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
 
 class TestHandleSetMasterPrice:
@@ -458,11 +453,11 @@ class TestHandleSetMasterPrice:
         fsm.clear.assert_called()
 
     async def test_non_admin(self):
+        # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
         import handlers.admin as adm
         setup_admin(999)
         msg = make_message(text="5000", user_id=555)
-        fsm = make_fsm(data={"master_name": "Alibek", "service_name": "Haircut"})
-        await adm.handle_set_master_price(msg, fsm)
+        assert await adm.AdminFilter()(msg) is False
 
 
 class TestDeleteMasterPrice:
@@ -470,8 +465,7 @@ class TestDeleteMasterPrice:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="del_mprice:Alibek:Haircut", user_id=555)
-        await adm.cb_delete_master_price(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_bad_format(self):
         import handlers.admin as adm

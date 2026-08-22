@@ -43,8 +43,7 @@ class TestAdminBookingsOffset:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_bookings:0", user_id=555)
-        await adm.cb_admin_bookings(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_invalid_offset_defaults_to_zero(self, db):
         import handlers.admin as adm
@@ -63,8 +62,7 @@ class TestAdminManageBooking:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_manage_booking:abc", user_id=555)
-        await adm.cb_admin_manage_booking(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_missing_booking_handled(self, db):
         import handlers.admin as adm
@@ -91,8 +89,7 @@ class TestAdminExport:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_export", user_id=555)
-        await adm.cb_admin_export(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_export_success(self, db):
         import handlers.admin as adm, storage
@@ -120,8 +117,7 @@ class TestAdminMasters:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_masters", user_id=555)
-        await adm.cb_admin_masters(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_empty_masters_shows_empty_message(self, db):
         import handlers.admin as adm, config
@@ -153,8 +149,7 @@ class TestAdminCancelBooking:
         setup_admin(999)
         cb = make_callback(data="admin_pre_cancel:abc", user_id=555)
         bot = AsyncMock()
-        await adm.cb_admin_cancel_booking(cb, bot)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_cancel_existing_booking(self, db):
         import handlers.admin as adm, storage
@@ -177,8 +172,7 @@ class TestAdminCompleteBooking:
         setup_admin(999)
         cb = make_callback(data="admin_complete_booking:abc", user_id=555)
         bot = AsyncMock()
-        await adm.cb_admin_complete_booking(cb, bot)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_complete_existing_booking(self, db):
         import handlers.admin as adm, storage
@@ -223,8 +217,7 @@ class TestCbAdmin:
         setup_admin(999)
         cb = make_callback(data="admin", user_id=555)
         fsm = make_fsm()
-        await adm.cb_admin(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
 
 # ==================================================================
@@ -246,12 +239,11 @@ class TestChangeHoursHandler:
             config.WORKING_HOURS.update(orig_hours)
 
     async def test_change_hours_non_admin_exits(self):
+        # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
         import handlers.admin as adm
         setup_admin(999)
         msg = make_message(text="10:00-20:00", user_id=555)
-        fsm = make_fsm()
-        await adm.handle_change_hours(msg, fsm)
-        msg.bot.send_message.assert_not_called()
+        assert await adm.AdminFilter()(msg) is False
 
     async def test_change_hours_empty_text_rejected(self):
         import handlers.admin as adm

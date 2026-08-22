@@ -468,16 +468,13 @@ class TestAdminCancelWaitlist:
             await cb_admin_cancel_booking(cb, bot)
         bot.send_message.assert_not_called()
 
-    async def test_non_admin_blocked_booking_stays_active(self, db):
-        import storage, config
+    async def test_non_admin_blocked_booking_stays_active(self):
+        # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
+        import handlers.admin as adm
+        import config
         config.ADMIN_IDS = []
-        bid = await storage.save_booking(SAMPLE_BOOKING)
-        from handlers.admin import cb_admin_cancel_booking
-        cb = make_callback(data=f"admin_cancel_booking:{bid}", user_id=999)
-        bot = AsyncMock()
-        await cb_admin_cancel_booking(cb, bot)
-        booking = await storage.get_booking_with_user(bid)
-        assert booking["status"] == "active"
+        cb = make_callback(data="admin_cancel_booking:1", user_id=999)
+        assert await adm.AdminFilter()(cb) is False
 
 
 # =============================================================================

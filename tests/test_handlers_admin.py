@@ -254,14 +254,12 @@ class TestCbAdminAddMaster:
         cb.answer.assert_called()
 
     async def test_non_admin_blocked(self):
+        # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
+        import handlers.admin as adm
         import config
         config.ADMIN_IDS = []
-        from handlers.admin import cb_admin_add_master
         cb = make_callback(user_id=999)
-        state = make_fsm()
-        await cb_admin_add_master(cb, state)
-        cb.answer.assert_called()
-        state.set_state.assert_not_called()
+        assert await adm.AdminFilter()(cb) is False
 
 
 class TestCbAdminLoyalty:

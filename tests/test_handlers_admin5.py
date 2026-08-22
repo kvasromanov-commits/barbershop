@@ -91,15 +91,13 @@ class TestAdminWaitlist:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_waitlist", user_id=555)
-        await adm.cb_admin_waitlist(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_page_non_admin(self):
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_waitlist_page:0", user_id=555)
-        await adm.cb_admin_waitlist_page(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_page_bad_offset(self, db):
         import handlers.admin as adm
@@ -124,15 +122,13 @@ class TestAdminReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_reviews", user_id=555)
-        await adm.cb_admin_reviews(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_page_non_admin(self):
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_reviews_page:0", user_id=555)
-        await adm.cb_admin_reviews_page(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_page_bad_offset(self, db):
         import handlers.admin as adm
@@ -158,8 +154,7 @@ class TestToggleDay:
         setup_admin(999)
         cb = make_callback(data="toggle_day:1", user_id=555)
         fsm = make_fsm(data={"work_days": [1], "master_name": "Alibek"})
-        await adm.cb_toggle_day(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_add_day(self):
         import handlers.admin as adm
@@ -194,8 +189,7 @@ class TestSaveMasterDays:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="save_master_days", user_id=555)
-        await adm.cb_save_master_days(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_no_days(self):
         import handlers.admin as adm
@@ -235,8 +229,7 @@ class TestMasterServices:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="master_services:Alibek", user_id=555)
-        await adm.cb_master_services(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_not_found(self):
         import handlers.admin as adm
@@ -268,8 +261,7 @@ class TestToggleService:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="toggle_service:Haircut", user_id=555)
-        await adm.cb_toggle_service(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_add(self):
         import handlers.admin as adm
@@ -304,8 +296,7 @@ class TestSaveMasterServices:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="save_master_services", user_id=555)
-        await adm.cb_save_master_services(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_success(self):
         import handlers.admin as adm
@@ -339,8 +330,7 @@ class TestMasterPrices:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="master_prices:Alibek", user_id=555)
-        await adm.cb_master_prices(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_not_found(self):
         import handlers.admin as adm
@@ -363,8 +353,7 @@ class TestEditMasterPrice:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="edit_mprice:Alibek:Haircut", user_id=555)
-        await adm.cb_edit_master_price(cb, make_fsm())
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_bad_format(self):
         import handlers.admin as adm

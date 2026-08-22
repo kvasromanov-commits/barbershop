@@ -20,15 +20,13 @@ class TestAdminBookingsPagination:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_bookings", user_id=555)
-        await adm.cb_admin_bookings(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_bookings_page_non_admin(self):
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_bookings_page:0", user_id=555)
-        await adm.cb_admin_bookings_page(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_bookings_page_invalid_offset(self, db):
         import handlers.admin as adm
@@ -53,8 +51,7 @@ class TestAdminManageBooking:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_manage_booking:abc", user_id=555)
-        await adm.cb_admin_manage_booking(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_booking_not_found(self, db):
         import handlers.admin as adm
@@ -95,8 +92,7 @@ class TestAdminExport:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_export", user_id=555)
-        await adm.cb_admin_export(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_export_success(self, db):
         import handlers.admin as adm, storage
@@ -207,8 +203,7 @@ class TestAdminRemoveMaster:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_remove_master:Alibek", user_id=555)
-        await adm.cb_admin_remove_master(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_with_active_bookings(self, db):
         import handlers.admin as adm, storage
@@ -305,8 +300,7 @@ class TestAdminRemoveService:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_remove_service:Haircut", user_id=555)
-        await adm.cb_admin_remove_service(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_service_not_found(self):
         import handlers.admin as adm
@@ -338,8 +332,7 @@ class TestAdminConfirmRemoveServiceNew:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_confirm_remove_service:Haircut", user_id=555)
-        await adm.cb_admin_confirm_remove_service(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_not_found(self):
         import handlers.admin as adm
@@ -354,8 +347,7 @@ class TestAdminSettings:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_settings", user_id=555)
-        await adm.cb_admin_settings(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_settings_admin(self):
         import handlers.admin as adm
@@ -369,8 +361,7 @@ class TestAdminSettings:
         setup_admin(999)
         cb = make_callback(data="admin_change_address", user_id=555)
         fsm = make_fsm()
-        await adm.cb_admin_change_address(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_change_address_admin(self):
         import handlers.admin as adm
@@ -412,8 +403,7 @@ class TestAdminSettings:
         setup_admin(999)
         cb = make_callback(data="admin_change_phone", user_id=555)
         fsm = make_fsm()
-        await adm.cb_admin_change_phone(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_handle_phone_empty(self):
         import handlers.admin as adm
@@ -447,8 +437,7 @@ class TestAdminSettings:
         setup_admin(999)
         cb = make_callback(data="admin_change_hours", user_id=555)
         fsm = make_fsm()
-        await adm.cb_admin_change_hours(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_handle_hours_empty(self):
         import handlers.admin as adm
@@ -483,8 +472,7 @@ class TestAdminWaitlistReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_waitlist", user_id=555)
-        await adm.cb_admin_waitlist(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_waitlist_admin(self, db):
         import handlers.admin as adm, storage
@@ -498,8 +486,7 @@ class TestAdminWaitlistReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_waitlist_page:0", user_id=555)
-        await adm.cb_admin_waitlist_page(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_waitlist_page_admin(self, db):
         import handlers.admin as adm, storage
@@ -513,8 +500,7 @@ class TestAdminWaitlistReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_reviews", user_id=555)
-        await adm.cb_admin_reviews(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_reviews_admin(self, db):
         import handlers.admin as adm, storage
@@ -528,15 +514,13 @@ class TestAdminWaitlistReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_reviews_page:0", user_id=555)
-        await adm.cb_admin_reviews_page(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_loyalty_non_admin(self):
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_loyalty", user_id=555)
-        await adm.cb_admin_loyalty(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_loyalty_admin(self, db):
         import handlers.admin as adm, storage
@@ -550,8 +534,7 @@ class TestAdminWaitlistReviews:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_referrals", user_id=555)
-        await adm.cb_admin_referrals(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_referrals_admin(self, db):
         import handlers.admin as adm, storage
@@ -568,8 +551,7 @@ class TestMasterTgManagement:
         setup_admin(999)
         cb = make_callback(data="admin_set_master_tg:Alibek", user_id=555)
         fsm = make_fsm()
-        await adm.cb_admin_set_master_tg(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_set_master_tg_not_found(self):
         import handlers.admin as adm
@@ -588,11 +570,11 @@ class TestMasterTgManagement:
         fsm.set_state.assert_called()
 
     async def test_handle_tg_id_non_admin(self):
+        # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
         import handlers.admin as adm
         setup_admin(999)
         msg = make_message(text="123456", user_id=555)
-        fsm = make_fsm(data={"master_name": "Alibek"})
-        await adm.handle_set_master_tg(msg, fsm)
+        assert await adm.AdminFilter()(msg) is False
 
     async def test_handle_tg_id_invalid(self):
         import handlers.admin as adm
@@ -641,8 +623,7 @@ class TestMasterSchedule:
         setup_admin(999)
         cb = make_callback(data="master_schedule:Alibek", user_id=555)
         fsm = make_fsm()
-        await adm.cb_master_schedule(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_schedule_not_found(self):
         import handlers.admin as adm
@@ -697,8 +678,7 @@ class TestMasterServicesManagement:
         setup_admin(999)
         cb = make_callback(data="master_services:Alibek", user_id=555)
         fsm = make_fsm()
-        await adm.cb_master_services(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_services_not_found(self):
         import handlers.admin as adm
@@ -745,8 +725,7 @@ class TestMasterPrices:
         setup_admin(999)
         cb = make_callback(data="master_prices:Alibek", user_id=555)
         fsm = make_fsm()
-        await adm.cb_master_prices(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_master_prices_not_found(self):
         import handlers.admin as adm
@@ -771,8 +750,7 @@ class TestMasterPrices:
         setup_admin(999)
         cb = make_callback(data="edit_mprice:Alibek:Haircut", user_id=555)
         fsm = make_fsm()
-        await adm.cb_edit_master_price(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_edit_master_price_valid(self, db):
         import handlers.admin as adm, storage
@@ -809,8 +787,7 @@ class TestMasterPrices:
         setup_admin(999)
         cb = make_callback(data="del_mprice:Alibek:Haircut", user_id=555)
         fsm = make_fsm()
-        await adm.cb_delete_master_price(cb, fsm)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_delete_master_price_valid(self, db):
         import handlers.admin as adm, storage
@@ -827,8 +804,7 @@ class TestMasterPrices:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="reset_mprices:Alibek", user_id=555)
-        await adm.cb_reset_all_master_prices(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_reset_all_prices_valid(self, db):
         import handlers.admin as adm, storage
@@ -846,8 +822,7 @@ class TestAdminPreCancel:
         import handlers.admin as adm
         setup_admin(999)
         cb = make_callback(data="admin_pre_cancel:abc", user_id=555)
-        await adm.cb_admin_pre_cancel(cb)
-        cb.answer.assert_called_with(adm.messages.ADMIN_ONLY, show_alert=True)
+        assert await adm.AdminFilter()(cb) is False
 
     async def test_admin(self):
         import handlers.admin as adm

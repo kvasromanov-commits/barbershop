@@ -106,9 +106,6 @@ async def cb_admin(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "admin_stats")
 async def cb_admin_stats(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         stats = await storage.get_stats()
         text = f"{E.CHART} <b>Статистика</b>\n\n"
@@ -142,16 +139,10 @@ async def cb_admin_stats(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_bookings")
 async def cb_admin_bookings(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await _show_admin_bookings_page(callback, offset=0)
 
 @router.callback_query(F.data.startswith("admin_bookings_page:"))
 async def cb_admin_bookings_page(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         offset = int(callback.data.split(":",1)[1])
     except (ValueError, IndexError):
@@ -193,9 +184,6 @@ async def _show_admin_bookings_page(callback, offset: int = 0):
 @router.callback_query(F.data.startswith("admin_manage_booking:"))
 async def cb_admin_manage_booking(callback: CallbackQuery):
     """CRIT-03 FIX: show cancel/complete/info screen for a specific booking."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     booking_id = callback.data.split(":", 1)[1]
     try:
         booking = await storage.get_booking_with_user(booking_id)
@@ -228,9 +216,6 @@ async def cb_noop(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_export")
 async def cb_admin_export(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     filepath = None
     try:
@@ -304,9 +289,6 @@ async def cb_admin_export(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_masters")
 async def cb_admin_masters(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         text = f"{E.USER} <b>Мастера:</b>\n\nВыберите мастера:"
         if not config.MASTERS:
@@ -324,9 +306,6 @@ async def cb_admin_masters(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_add_master")
 async def cb_admin_add_master(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await state.set_state(AdminStates.add_master)
     await edit_with_retry(callback.message, "Введите данные мастера (Имя, опыт, специализация):")
     await callback.answer()
@@ -334,8 +313,6 @@ async def cb_admin_add_master(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.add_master)
 async def handle_add_master(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите данные текстом.")
         return
@@ -364,9 +341,6 @@ async def handle_add_master(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin_master_detail:"))
 async def cb_admin_master_detail(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     info = config.MASTERS.get(master_name)
     if not info:
@@ -379,9 +353,6 @@ async def cb_admin_master_detail(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_edit_master:"))
 async def cb_admin_edit_master(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     await state.update_data(master_name=master_name)
     await state.set_state(AdminStates.edit_master)
@@ -391,8 +362,6 @@ async def cb_admin_edit_master(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.edit_master)
 async def handle_edit_master(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите данные текстом.")
         return
@@ -426,9 +395,6 @@ async def handle_edit_master(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin_remove_master:"))
 async def cb_admin_remove_master(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     
     # Check if master has active bookings
@@ -458,9 +424,6 @@ async def cb_admin_remove_master(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_services")
 async def cb_admin_services(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         services_text = ""
         for service, price in config.SERVICES.items():
@@ -478,9 +441,6 @@ async def cb_admin_services(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_add_service")
 async def cb_admin_add_service(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await state.set_state(AdminStates.add_service)
     await edit_with_retry(callback.message, "Введите данные услуги (Название, цена):")
     await callback.answer()
@@ -488,8 +448,6 @@ async def cb_admin_add_service(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.add_service)
 async def handle_add_service(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите данные текстом.")
         return
@@ -534,9 +492,6 @@ async def handle_add_service(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("admin_service_detail:"))
 async def cb_admin_service_detail(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     service_name = callback.data.split(":", 1)[1]
     price = config.SERVICES.get(service_name)
     if price is None:
@@ -549,9 +504,6 @@ async def cb_admin_service_detail(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_edit_service:"))
 async def cb_admin_edit_service(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     service_name = callback.data.split(":", 1)[1]
     await state.update_data(service_name=service_name)
     await state.set_state(AdminStates.edit_service)
@@ -561,8 +513,6 @@ async def cb_admin_edit_service(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.edit_service)
 async def handle_edit_service(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите данные текстом.")
         return
@@ -612,9 +562,6 @@ async def handle_edit_service(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("admin_remove_service:"))
 async def cb_admin_remove_service(callback: CallbackQuery):
     """HIGH-05 FIX: Show confirm dialog before removing service."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     service_name = callback.data.split(":", 1)[1]
     if service_name not in config.SERVICES:
         await callback.answer("Услуга не найдена", show_alert=True)
@@ -650,9 +597,6 @@ async def cb_admin_remove_service(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("admin_confirm_remove_service:"))
 async def cb_admin_confirm_remove_service(callback: CallbackQuery):
     """HIGH-05 FIX: Confirmed service removal."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     service_name = callback.data.split(":", 1)[1]
     if service_name in config.SERVICES:
         del config.SERVICES[service_name]
@@ -670,9 +614,6 @@ async def cb_admin_confirm_remove_service(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_settings")
 async def cb_admin_settings(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         text = (
             f"Настройки\n\n"
@@ -688,9 +629,6 @@ async def cb_admin_settings(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_change_address")
 async def cb_admin_change_address(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await state.set_state(AdminStates.change_address)
     await edit_with_retry(callback.message, "Введите новый адрес:")
     await callback.answer()
@@ -698,8 +636,6 @@ async def cb_admin_change_address(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.change_address)
 async def handle_change_address(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите адрес текстом.")
         return
@@ -723,9 +659,6 @@ async def handle_change_address(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_change_phone")
 async def cb_admin_change_phone(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await state.set_state(AdminStates.change_phone)
     await edit_with_retry(callback.message, "Введите новый телефон:")
     await callback.answer()
@@ -733,8 +666,6 @@ async def cb_admin_change_phone(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.change_phone)
 async def handle_change_phone(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите телефон текстом.")
         return
@@ -758,9 +689,6 @@ async def handle_change_phone(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "admin_change_hours")
 async def cb_admin_change_hours(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await state.set_state(AdminStates.change_hours)
     await edit_with_retry(callback.message, "Введите новые часы работы (например: Пн-Сб: 10:00-21:00, Вс: 11:00-19:00):")
     await callback.answer()
@@ -768,8 +696,6 @@ async def cb_admin_change_hours(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.change_hours)
 async def handle_change_hours(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите часы работы текстом.")
         return
@@ -883,9 +809,6 @@ async def handle_change_hours(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("admin_pre_cancel:"))
 async def cb_admin_pre_cancel(callback: CallbackQuery):
     """HIGH-7 FIX: Confirm dialog before admin cancels booking."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     booking_id = callback.data.split(":", 1)[1]
     confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
         [
@@ -915,9 +838,6 @@ async def cb_admin_pre_cancel(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_cancel_booking:"))
 async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     booking_id = callback.data.split(":", 1)[1]
     try:
         booking = await storage.admin_cancel_booking(booking_id)
@@ -985,9 +905,6 @@ async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data.startswith("admin_complete_booking:"))
 async def cb_admin_complete_booking(callback: CallbackQuery, bot: Bot):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     booking_id = callback.data.split(":", 1)[1]
     try:
         booking = await storage.admin_complete_booking(booking_id)
@@ -1034,17 +951,11 @@ async def cb_admin_complete_booking(callback: CallbackQuery, bot: Bot):
 
 @router.callback_query(F.data == "admin_waitlist")
 async def cb_admin_waitlist(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await _show_admin_waitlist_page(callback, offset=0)
 
 
 @router.callback_query(F.data.startswith("admin_waitlist_page:"))
 async def cb_admin_waitlist_page(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         offset = int(callback.data.split(":", 1)[1])
     except (ValueError, IndexError):
@@ -1082,17 +993,11 @@ async def _show_admin_waitlist_page(callback, offset: int = 0):
 
 @router.callback_query(F.data == "admin_reviews")
 async def cb_admin_reviews(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     await _show_admin_reviews_page(callback, offset=0)
 
 
 @router.callback_query(F.data.startswith("admin_reviews_page:"))
 async def cb_admin_reviews_page(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         offset = int(callback.data.split(":", 1)[1])
     except (ValueError, IndexError):
@@ -1135,9 +1040,6 @@ async def _show_admin_reviews_page(callback, offset: int = 0):
 
 @router.callback_query(F.data == "admin_loyalty")
 async def cb_admin_loyalty(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         # P1 FIX: SQL-level pagination — no longer truncated to first 50 silently
         page, total = await storage.get_loyalty_list_paged(offset=0, limit=50)
@@ -1156,9 +1058,6 @@ async def cb_admin_loyalty(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_referrals")
 async def cb_admin_referrals(callback: CallbackQuery):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     try:
         # P1 FIX: SQL-level pagination
         page, total = await storage.get_referrals_paged(offset=0, limit=50)
@@ -1177,9 +1076,6 @@ async def cb_admin_referrals(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_set_master_tg:"))
 async def cb_admin_set_master_tg(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     if master_name not in config.MASTERS:
         await callback.answer("Мастер не найден", show_alert=True)
@@ -1204,8 +1100,6 @@ async def cb_admin_set_master_tg(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.set_master_tg)
 async def handle_set_master_tg(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     if not message.text or not message.text.strip().lstrip("-").isdigit():
         await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Введите числовой Telegram ID (например: 123456789) или 0 для удаления.", parse_mode="HTML")
         return
@@ -1242,9 +1136,6 @@ async def handle_set_master_tg(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("master_schedule:"))
 async def cb_master_schedule(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         master_name = callback.data.split(":", 1)[1]
@@ -1312,9 +1203,6 @@ async def cb_master_schedule(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("toggle_day:"), AdminStates.set_master_work_days)
 async def cb_toggle_day(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         day_num = int(callback.data.split(":", 1)[1])
@@ -1383,9 +1271,6 @@ async def cb_toggle_day(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "save_master_days", AdminStates.set_master_work_days)
 async def cb_save_master_days(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         data = await state.get_data()
@@ -1427,9 +1312,6 @@ async def cb_save_master_days(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("master_services:"))
 async def cb_master_services(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         master_name = callback.data.split(":", 1)[1]
@@ -1475,9 +1357,6 @@ async def cb_master_services(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("toggle_service:"), AdminStates.set_master_services)
 async def cb_toggle_service(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         service_name = callback.data.split(":", 1)[1]
@@ -1523,9 +1402,6 @@ async def cb_toggle_service(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "save_master_services", AdminStates.set_master_services)
 async def cb_save_master_services(callback: CallbackQuery, state: FSMContext):
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     
     try:
         data = await state.get_data()
@@ -1571,9 +1447,6 @@ async def cb_save_master_services(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("master_prices:"))
 async def cb_master_prices(callback: CallbackQuery, state: FSMContext):
     """Show per-master service price editor."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     if master_name not in config.MASTERS:
         await callback.answer("Мастер не найден", show_alert=True)
@@ -1602,9 +1475,6 @@ async def cb_master_prices(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("edit_mprice:"))
 async def cb_edit_master_price(callback: CallbackQuery, state: FSMContext):
     """Ask admin to enter new price for master+service."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     parts = callback.data.split(":", 2)  # edit_mprice:master:service
     if len(parts) < 3:
         await callback.answer("Ошибка", show_alert=True)
@@ -1633,8 +1503,6 @@ async def cb_edit_master_price(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStates.set_master_price)
 async def handle_set_master_price(message: Message, state: FSMContext):
-    if not _is_admin(message.from_user.id):
-        return
     data = await state.get_data()
     master_name = data.get("master_name", "")
     service_name = data.get("service_name", "")
@@ -1663,9 +1531,6 @@ async def handle_set_master_price(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("del_mprice:"))
 async def cb_delete_master_price(callback: CallbackQuery, state: FSMContext):
     """Reset service price to global for this master."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     parts = callback.data.split(":", 2)
     if len(parts) < 3:
         await callback.answer("Ошибка", show_alert=True)
@@ -1697,9 +1562,6 @@ async def cb_delete_master_price(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("reset_mprices:"))
 async def cb_reset_all_master_prices(callback: CallbackQuery):
     """Reset ALL custom prices for a master to global."""
-    if not _is_admin(callback.from_user.id):
-        await callback.answer(messages.ADMIN_ONLY, show_alert=True)
-        return
     master_name = callback.data.split(":", 1)[1]
     for svc in list(config.SERVICES.keys()):
         await storage.delete_master_service_price(master_name, svc)
