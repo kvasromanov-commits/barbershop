@@ -1,8 +1,12 @@
-import sys, pathlib
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
 from tests.helpers import SAMPLE_BOOKING
 
 
@@ -11,6 +15,7 @@ class TestStorageStatsFunctions:
 
     async def test_get_bookings_by_date_range(self, db):
         import storage
+
         await storage.init_db()
         await storage.save_booking(SAMPLE_BOOKING)
         result = await storage.get_bookings_by_date_range("2020-01-01", "2030-12-31")
@@ -18,24 +23,28 @@ class TestStorageStatsFunctions:
 
     async def test_get_stats_by_master(self, db):
         import storage
+
         await storage.init_db()
         result = await storage.get_stats_by_master()
         assert isinstance(result, list)
 
     async def test_get_stats_by_day(self, db):
         import storage
+
         await storage.init_db()
         result = await storage.get_stats_by_day()
         assert isinstance(result, list)
 
     async def test_get_stats_by_service(self, db):
         import storage
+
         await storage.init_db()
         result = await storage.get_stats_by_service()
         assert isinstance(result, list)
 
     async def test_get_master_stats(self, db):
         import storage
+
         await storage.init_db()
         await storage.save_booking(SAMPLE_BOOKING)
         result = await storage.get_master_stats("Alibek")
@@ -43,6 +52,7 @@ class TestStorageStatsFunctions:
 
     async def test_get_service_stats(self, db):
         import storage
+
         await storage.init_db()
         result = await storage.get_service_stats("Haircut")
         assert "total" in result
@@ -53,6 +63,7 @@ class TestSaveMaster:
 
     async def test_save_master_new(self, db):
         import storage
+
         await storage.init_db()
         await storage.save_master("TestMaster", "3 years", "fades")
         masters = await storage.get_all_masters()
@@ -60,6 +71,7 @@ class TestSaveMaster:
 
     async def test_save_master_upsert(self, db):
         import storage
+
         await storage.init_db()
         await storage.save_master("TestMaster", "3 years", "fades")
         await storage.save_master("TestMaster", "5 years", "cuts")
@@ -75,6 +87,7 @@ class TestSlotLockCleanup:
         remove EXPIRED locks (the original code unconditionally removed
         everything, which broke blue/green deploys)."""
         import storage
+
         await storage.init_db()
         # Insert a lock that is already past its TTL.
         await storage.create_slot_lock("2026-12-01", "10:00", "Alibek", ttl_minutes=-10)
@@ -85,6 +98,7 @@ class TestSlotLockCleanup:
     async def test_cleanup_slot_locks_on_startup_keeps_active(self, db):
         """HIGH-1 regression: a fresh (active) lock must NOT be removed."""
         import storage
+
         await storage.init_db()
         await storage.create_slot_lock("2026-12-01", "10:00", "Alibek")
         await storage.cleanup_slot_locks_on_startup()
@@ -93,18 +107,26 @@ class TestSlotLockCleanup:
 
     async def test_cleanup_expired_slot_locks(self, db):
         import storage
+
         await storage.init_db()
         from datetime import datetime, timedelta
+
         past = (datetime.now() - timedelta(hours=2)).isoformat()
         # Insert directly with past expiry
         import db as db_module
+
         async with db_module.acquire() as conn:
-            from tz_utils import get_now
             import config
+            from tz_utils import get_now
+
             now = get_now(config.TIMEZONE).isoformat()
             await conn.execute(
                 "INSERT OR IGNORE INTO slot_locks (date, time, master, locked_at, expires_at) VALUES (?,?,?,?,?)",
-                "2026-01-01", "10:00", "OldMaster", now, past
+                "2026-01-01",
+                "10:00",
+                "OldMaster",
+                now,
+                past,
             )
             await conn.commit()
         deleted = await storage.cleanup_expired_slot_locks()
@@ -116,6 +138,7 @@ class TestMasterTelegramId:
 
     async def test_set_and_get_master_telegram_id(self, db):
         import storage
+
         await storage.init_db()
         await storage.set_master_telegram_id("Alibek", 12345)
         result = await storage.get_master_telegram_id("Alibek")
@@ -123,12 +146,14 @@ class TestMasterTelegramId:
 
     async def test_get_master_telegram_id_none(self, db):
         import storage
+
         await storage.init_db()
         result = await storage.get_master_telegram_id("NonExistent")
         assert result is None
 
     async def test_set_master_telegram_id_none(self, db):
         import storage
+
         await storage.init_db()
         await storage.set_master_telegram_id("Alibek", 12345)
         await storage.set_master_telegram_id("Alibek", None)
@@ -137,6 +162,7 @@ class TestMasterTelegramId:
 
     async def test_get_all_master_telegram_ids(self, db):
         import storage
+
         await storage.init_db()
         await storage.set_master_telegram_id("Alibek", 11111)
         await storage.set_master_telegram_id("Berik", 22222)
@@ -150,6 +176,7 @@ class TestSlotLockFailure:
 
     async def test_create_slot_lock_failure_is_non_fatal(self, db):
         import storage
+
         await storage.init_db()
         # Patch the upsert to fail — should only log a warning, not raise
         with patch("storage._db") as mock_db:

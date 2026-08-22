@@ -1,13 +1,18 @@
-import sys, pathlib
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from tests.helpers import make_callback, make_message, make_fsm, SAMPLE_BOOKING
+
+import pytest
+
+from tests.helpers import SAMPLE_BOOKING, make_callback, make_fsm, make_message
 
 
 def setup_admin(admin_id=100):
     import config
+
     config.ADMIN_IDS = [admin_id]
     config.MASTERS = {"Alibek": {"experience": "5 years", "specialization": "cuts"}}
     config.SERVICES = {"Haircut": 3000, "Beard": 2000}
@@ -23,6 +28,7 @@ def setup_admin(admin_id=100):
 class TestAdminStatsException:
     async def test_stats_exception(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_stats", user_id=admin_id)
         with patch("storage.get_all_bookings", side_effect=Exception("fail")):
@@ -34,6 +40,7 @@ class TestAdminStatsException:
 class TestAdminBookingsException:
     async def test_bookings_exception(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_bookings", user_id=admin_id)
         with patch("storage.get_all_bookings", side_effect=Exception("fail")):
@@ -43,7 +50,9 @@ class TestAdminBookingsException:
 
 class TestAdminMasters:
     async def test_no_masters(self):
-        import handlers.admin as adm, config
+        import config
+        import handlers.admin as adm
+
         admin_id = setup_admin()
         config.MASTERS = {}
         cb = make_callback(data="admin_masters", user_id=admin_id)
@@ -53,6 +62,7 @@ class TestAdminMasters:
 
     async def test_masters_exception(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_masters", user_id=admin_id)
         with patch("utils.edit_with_retry", AsyncMock(side_effect=Exception("fail"))):
@@ -63,6 +73,7 @@ class TestAdminMasters:
 class TestHandleAddMaster:
     async def test_empty_text(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="", user_id=admin_id)
         fsm = make_fsm()
@@ -71,6 +82,7 @@ class TestHandleAddMaster:
 
     async def test_bad_format(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="OnlyOnePart", user_id=admin_id)
         fsm = make_fsm()
@@ -79,6 +91,7 @@ class TestHandleAddMaster:
 
     async def test_name_too_long(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text=("A" * 41) + ", 5 years, cuts", user_id=admin_id)
         fsm = make_fsm()
@@ -86,7 +99,9 @@ class TestHandleAddMaster:
             await adm.handle_add_master(msg, fsm)
 
     async def test_success(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         msg = make_message(text="NewMaster, 3 years, cuts", user_id=admin_id)
@@ -99,6 +114,7 @@ class TestHandleAddMaster:
 class TestEditRemoveMaster:
     async def test_handle_edit_master_empty(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek"})
@@ -107,6 +123,7 @@ class TestEditRemoveMaster:
 
     async def test_handle_edit_master_bad_format(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="NoComma", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek"})
@@ -115,6 +132,7 @@ class TestEditRemoveMaster:
 
     async def test_handle_edit_master_name_too_long(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text=("A" * 41) + ", 5 years, cuts", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek"})
@@ -122,7 +140,9 @@ class TestEditRemoveMaster:
             await adm.handle_edit_master(msg, fsm)
 
     async def test_remove_master_has_active(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         cb = make_callback(data="admin_remove_master:Alibek", user_id=admin_id)
@@ -131,7 +151,9 @@ class TestEditRemoveMaster:
         cb.answer.assert_called()
 
     async def test_remove_master_not_in_config(self):
-        import handlers.admin as adm, config
+        import config
+        import handlers.admin as adm
+
         admin_id = setup_admin()
         config.MASTERS = {}
         cb = make_callback(data="admin_remove_master:Unknown", user_id=admin_id)
@@ -142,6 +164,7 @@ class TestEditRemoveMaster:
 class TestAdminServicesException:
     async def test_exception(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_services", user_id=admin_id)
         with patch("utils.edit_with_retry", AsyncMock(side_effect=Exception("fail"))):
@@ -152,6 +175,7 @@ class TestAdminServicesException:
 class TestHandleAddService:
     async def test_empty_text(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="", user_id=admin_id)
         fsm = make_fsm()
@@ -160,6 +184,7 @@ class TestHandleAddService:
 
     async def test_no_comma(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="NoCommaHere", user_id=admin_id)
         fsm = make_fsm()
@@ -168,6 +193,7 @@ class TestHandleAddService:
 
     async def test_name_too_long(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text=("A" * 36) + ", 3000", user_id=admin_id)
         fsm = make_fsm()
@@ -176,6 +202,7 @@ class TestHandleAddService:
 
     async def test_price_not_int(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="Trim, notanumber", user_id=admin_id)
         fsm = make_fsm()
@@ -184,6 +211,7 @@ class TestHandleAddService:
 
     async def test_price_zero(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="Trim, 0", user_id=admin_id)
         fsm = make_fsm()
@@ -194,6 +222,7 @@ class TestHandleAddService:
 class TestServiceDetailNotFound:
     async def test_not_found(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_service_detail:Unknown", user_id=admin_id)
         await adm.cb_admin_service_detail(cb)
@@ -203,6 +232,7 @@ class TestServiceDetailNotFound:
 class TestHandleEditService:
     async def test_empty_text(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="", user_id=admin_id)
         fsm = make_fsm(data={"service_name": "Haircut"})
@@ -211,6 +241,7 @@ class TestHandleEditService:
 
     async def test_no_comma(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="NoComma", user_id=admin_id)
         fsm = make_fsm(data={"service_name": "Haircut"})
@@ -219,6 +250,7 @@ class TestHandleEditService:
 
     async def test_name_too_long(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text=("A" * 36) + ", 3000", user_id=admin_id)
         fsm = make_fsm(data={"service_name": "Haircut"})
@@ -227,6 +259,7 @@ class TestHandleEditService:
 
     async def test_price_not_int(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="NewCut, notint", user_id=admin_id)
         fsm = make_fsm(data={"service_name": "Haircut"})
@@ -235,6 +268,7 @@ class TestHandleEditService:
 
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         msg = make_message(text="NewCut, 3000", user_id=555)
         fsm = make_fsm(data={"service_name": "Haircut"})
@@ -244,6 +278,7 @@ class TestHandleEditService:
 class TestAdminRemoveService:
     async def test_not_found(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_remove_service:Unknown", user_id=admin_id)
         await adm.cb_admin_remove_service(cb)
@@ -251,6 +286,7 @@ class TestAdminRemoveService:
 
     async def test_has_active(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_remove_service:Haircut", user_id=admin_id)
         with patch("storage.get_service_stats", AsyncMock(return_value={"active": 3})):
@@ -258,7 +294,9 @@ class TestAdminRemoveService:
         cb.answer.assert_called()
 
     async def test_shows_confirm(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         cb = make_callback(data="admin_remove_service:Haircut", user_id=admin_id)
@@ -271,12 +309,14 @@ class TestAdminRemoveService:
 class TestAdminCancelBookingExtra:
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="admin_cancel_booking:x", user_id=555)
         assert await adm.AdminFilter()(cb) is False
 
     async def test_pre_cancel_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="admin_pre_cancel:x", user_id=555)
         assert await adm.AdminFilter()(cb) is False
@@ -284,7 +324,9 @@ class TestAdminCancelBookingExtra:
 
 class TestHandleWorkingHours:
     async def test_non_admin(self):
-        import handlers.admin as adm, config
+        import config
+        import handlers.admin as adm
+
         setup_admin(999)
         old_wh = config.BARBERSHOP_WORKING_HOURS
         old_ts = list(config.TIME_SLOTS) if hasattr(config, "TIME_SLOTS") else []
@@ -296,7 +338,9 @@ class TestHandleWorkingHours:
             config.TIME_SLOTS = old_ts
 
     async def test_empty_slots_format(self):
-        import handlers.admin as adm, config
+        import config
+        import handlers.admin as adm
+
         admin_id = setup_admin()
         old_ts = list(getattr(config, "TIME_SLOTS", []))
         old_wh = config.BARBERSHOP_WORKING_HOURS
@@ -311,7 +355,9 @@ class TestHandleWorkingHours:
         config.BARBERSHOP_WORKING_HOURS = old_wh
 
     async def test_valid_hours(self):
-        import handlers.admin as adm, config
+        import config
+        import handlers.admin as adm
+
         admin_id = setup_admin()
         old_wh = config.BARBERSHOP_WORKING_HOURS
         old_ts = list(getattr(config, "TIME_SLOTS", []))
@@ -334,19 +380,23 @@ class TestHandleWorkingHours:
 class TestMasterSchedule:
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="master_schedule:Alibek", user_id=555)
         assert await adm.AdminFilter()(cb) is False
 
     async def test_master_not_found(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="master_schedule:Unknown", user_id=admin_id)
         await adm.cb_master_schedule(cb, make_fsm())
         cb.answer.assert_called_with("Мастер не найден", show_alert=True)
 
     async def test_success(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         cb = make_callback(data="master_schedule:Alibek", user_id=admin_id)
@@ -358,6 +408,7 @@ class TestMasterSchedule:
 
     async def test_exception(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="master_schedule:Alibek", user_id=admin_id)
         with patch("storage.get_master_work_days", AsyncMock(side_effect=Exception("fail"))):
@@ -368,12 +419,14 @@ class TestMasterSchedule:
 class TestSetMasterTg:
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="admin_set_master_tg:Alibek", user_id=555)
         assert await adm.AdminFilter()(cb) is False
 
     async def test_master_not_found(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_set_master_tg:Unknown", user_id=admin_id)
         await adm.cb_admin_set_master_tg(cb, make_fsm())
@@ -381,6 +434,7 @@ class TestSetMasterTg:
 
     async def test_success(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="admin_set_master_tg:Alibek", user_id=admin_id)
         with patch("utils.edit_with_retry", AsyncMock()):
@@ -389,6 +443,7 @@ class TestSetMasterTg:
 
     async def test_handle_non_digit(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="notadigit", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek"})
@@ -396,7 +451,9 @@ class TestSetMasterTg:
             await adm.handle_set_master_tg(msg, fsm)
 
     async def test_handle_zero_removes(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         msg = make_message(text="0", user_id=admin_id)
@@ -408,6 +465,7 @@ class TestSetMasterTg:
 
     async def test_handle_no_master_name(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="12345", user_id=admin_id)
         fsm = make_fsm(data={})
@@ -419,6 +477,7 @@ class TestSetMasterTg:
 class TestMasterPricesNonAdmin:
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="master_prices:Alibek", user_id=555)
         assert await adm.AdminFilter()(cb) is False
@@ -427,6 +486,7 @@ class TestMasterPricesNonAdmin:
 class TestHandleSetMasterPrice:
     async def test_non_digit(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="abc", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek", "service_name": "Haircut"})
@@ -435,6 +495,7 @@ class TestHandleSetMasterPrice:
 
     async def test_zero_price(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         msg = make_message(text="0", user_id=admin_id)
         fsm = make_fsm(data={"master_name": "Alibek", "service_name": "Haircut"})
@@ -442,7 +503,9 @@ class TestHandleSetMasterPrice:
             await adm.handle_set_master_price(msg, fsm)
 
     async def test_success(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         msg = make_message(text="5000", user_id=admin_id)
@@ -455,6 +518,7 @@ class TestHandleSetMasterPrice:
     async def test_non_admin(self):
         # MED-7 cleanup: rejection now lives in the router-level AdminFilter.
         import handlers.admin as adm
+
         setup_admin(999)
         msg = make_message(text="5000", user_id=555)
         assert await adm.AdminFilter()(msg) is False
@@ -463,19 +527,23 @@ class TestHandleSetMasterPrice:
 class TestDeleteMasterPrice:
     async def test_non_admin(self):
         import handlers.admin as adm
+
         setup_admin(999)
         cb = make_callback(data="del_mprice:Alibek:Haircut", user_id=555)
         assert await adm.AdminFilter()(cb) is False
 
     async def test_bad_format(self):
         import handlers.admin as adm
+
         admin_id = setup_admin()
         cb = make_callback(data="del_mprice:OnlyOne", user_id=admin_id)
         await adm.cb_delete_master_price(cb, make_fsm())
         cb.answer.assert_called_with("Ошибка", show_alert=True)
 
     async def test_success(self, db):
-        import handlers.admin as adm, storage
+        import handlers.admin as adm
+        import storage
+
         admin_id = setup_admin()
         await storage.init_db()
         cb = make_callback(data="del_mprice:Alibek:Haircut", user_id=admin_id)

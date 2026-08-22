@@ -1,31 +1,32 @@
-import logging
-import signal
 import asyncio
+import html as _html
+import logging
 import os
+import signal
+
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, ErrorEvent
-from aiogram.fsm.context import FSMContext
 from aiogram.filters import StateFilter
-from config import BOT_TOKEN, load_config_from_db, save_config_to_db
+from aiogram.fsm.context import FSMContext
+from aiogram.types import ErrorEvent, Message
+
 import db as _db_module
-from storage import init_db, delete_old_scheduler_jobs
-from scheduler import start_scheduler, shutdown_scheduler
-from backup import backup_database, cleanup_old_backups
-from monitoring import start_monitoring, get_health_status
-from handlers.start import router as start_router
+import keyboards
+from config import BOT_TOKEN, load_config_from_db
+from emoji_config import E
+from handlers.admin import router as admin_router
 from handlers.booking import router as booking_router
 from handlers.info import router as info_router
-from handlers.admin import router as admin_router
-from middleware import (
-    RateLimitMiddleware,
-    AdminCheckMiddleware,
-    RequestIDMiddleware,
-    GlobalConcurrencyMiddleware,
-)
-import keyboards
-from emoji_config import E
+from handlers.start import router as start_router
 from logging_config import configure_logging
-import html as _html
+from middleware import (
+    AdminCheckMiddleware,
+    GlobalConcurrencyMiddleware,
+    RateLimitMiddleware,
+    RequestIDMiddleware,
+)
+from monitoring import get_health_status, start_monitoring
+from scheduler import shutdown_scheduler, start_scheduler
+from storage import delete_old_scheduler_jobs, init_db
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,10 @@ async def check_webhook_conflict(bot) -> str | None:
     if not wh.url:
         return None
     logger.warning(
-        f"Active external webhook detected: {wh.url!r} — bot runs in polling mode; "
-        f"getUpdates conflicts possible."
+        f"Active external webhook detected: {wh.url!r} — bot runs in polling mode; getUpdates conflicts possible."
     )
     from config import ADMIN_IDS as _AIDS
+
     for _aid in _AIDS:
         try:
             await bot.send_message(
@@ -67,6 +68,7 @@ async def check_webhook_conflict(bot) -> str | None:
             pass
     return wh.url
 
+
 # HIGH-PRODUCTION: structured logging (JSON or human-readable).
 # Set LOG_JSON=1 in env for fluentbit/Loki/CloudWatch ingestion.
 configure_logging()
@@ -80,10 +82,11 @@ async def main():
 
     # Proxy configuration (optional - set PROXY_URL in .env if Telegram is blocked)
     proxy = os.getenv("PROXY_URL", None)  # e.g., "http://proxy.example.com:8080"
-    
+
     if proxy:
         from aiogram.client.session.aiohttp import AiohttpSession
         from aiohttp import ClientTimeout
+
         timeout = ClientTimeout(total=60, connect=30, sock_connect=30, sock_read=30)
         session = AiohttpSession(proxy=proxy, timeout=timeout)
         bot = Bot(token=BOT_TOKEN, session=session)
@@ -107,6 +110,7 @@ async def main():
         try:
             # FIX: aiogram 3.x built-in RedisStorage (redis>=4.2 is dep of aioredis==2.0.1)
             from aiogram.fsm.storage.redis import RedisStorage
+
             storage = RedisStorage.from_url(redis_url)
             # Mask password in Redis URL for logs
             masked_url = redis_url
@@ -119,9 +123,11 @@ async def main():
         except Exception as e:
             logger.warning(f"Redis not available, falling back to FileStorage: {e}")
             from fsm_storage import FileStorage
+
             storage = FileStorage()
     else:
         from fsm_storage import FileStorage
+
         storage = FileStorage()
         logger.info("Using FileStorage (no REDIS_URL set)")
 
@@ -138,13 +144,13 @@ async def main():
 
     # SEC-13 FIX: bound global concurrent handler executions (DoS / pool exhaustion)
     from config import GLOBAL_CONCURRENCY
+
     dp.message.middleware(GlobalConcurrencyMiddleware(limit=GLOBAL_CONCURRENCY))
     dp.callback_query.middleware(GlobalConcurrencyMiddleware(limit=GLOBAL_CONCURRENCY))
 
     # NEW-001 FIX: Register AdminCheckMiddleware to set is_admin in data
     dp.message.middleware(AdminCheckMiddleware())
     dp.callback_query.middleware(AdminCheckMiddleware())
-
 
     dp.include_router(start_router)
     dp.include_router(booking_router)
@@ -155,31 +161,30 @@ async def main():
     # so @dp.callback_query consumed callbacks before booking_router could handle them.
     # Solution: last-priority Router included after all other routers.
     from aiogram import Router as _FBRouter
+
     _fallback = _FBRouter(name="fallback")
 
     @_fallback.message(F.text, ~F.text.regexp(r"^/"), StateFilter(None))
     async def fsm_fallback_handler(message: Message, state: FSMContext):
         """Reached only when no other router matched + user has no FSM state."""
         await message.answer(
-            f"{E.INFO} Напишите /start для начала работы.",
-            reply_markup=keyboards.back_to_main_kb(),
-            parse_mode="HTML"
+            f"{E.INFO} Напишите /start для начала работы.", reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML"
         )
 
-    from aiogram.types import CallbackQuery as CQ
+    from aiogram.types import CallbackQuery as callback_query  # noqa: N813
+
     @_fallback.callback_query()
-    async def callback_fallback_handler(callback: CQ, state: FSMContext):
+    async def callback_fallback_handler(callback: callback_query, state: FSMContext):
         """Reached only when ALL routers failed to match - definitely unhandled."""
-        await callback.answer(
-            "Сессия устарела. Нажмите /start",
-            show_alert=True
-        )
+        await callback.answer("Сессия устарела. Нажмите /start", show_alert=True)
 
     # MUST be last so all other routers get priority over fallback
     dp.include_router(_fallback)
+
     @dp.error()
     async def global_error_handler(event: ErrorEvent):
         import traceback as _tb
+
         exc = event.exception
         err_text = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))[:3000]
         logger.error("Global error: %s", exc, exc_info=True)
@@ -192,6 +197,7 @@ async def main():
         if not _is_user_error:
             # Real bug - notify admins with full traceback
             from config import ADMIN_IDS as _AIDS
+
             for _aid in _AIDS:
                 try:
                     await bot.send_message(
@@ -216,15 +222,18 @@ async def main():
     logger.info("Database initialized")
     # FIX: чистим stale slot_locks от прерванных сессий
     from storage import cleanup_slot_locks_on_startup
+
     await cleanup_slot_locks_on_startup()
 
     # M-2 FIX: on first start (empty settings table) persist defaults to DB
     try:
         from storage import get_all_settings
+
         _existing = await get_all_settings()
         if not _existing:
             logger.info("First startup detected: saving default config to DB")
             from config import save_config_to_db
+
             await save_config_to_db()
     except Exception as _e:
         logger.warning(f"First-startup config save failed: {_e}")
@@ -232,30 +241,29 @@ async def main():
     logger.info("Config loaded from DB")
 
     # Устанавливаем команды бота автоматически
-    from aiogram.types import BotCommand, BotCommandScopeDefault, BotCommandScopeChat
+    from aiogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
+
     from config import ADMIN_IDS
 
     user_commands = [
-        BotCommand(command="start",    description="Главное меню"),
-        BotCommand(command="me",       description="Мой профиль и записи"),
-        BotCommand(command="master",   description="Все мастера"),
+        BotCommand(command="start", description="Главное меню"),
+        BotCommand(command="me", description="Мой профиль и записи"),
+        BotCommand(command="master", description="Все мастера"),
         BotCommand(command="waitlist", description="Мой лист ожидания"),
-        BotCommand(command="cancel",   description="Отменить запись"),
-        BotCommand(command="help",     description="Справка по командам"),
+        BotCommand(command="cancel", description="Отменить запись"),
+        BotCommand(command="help", description="Справка по командам"),
     ]
     await bot.set_my_commands(user_commands, scope=BotCommandScopeDefault())
 
     # Для каждого администратора — расширенный список команд
-    admin_commands = user_commands + [
+    admin_commands = [
+        *user_commands,
         BotCommand(command="admin", description="Панель администратора"),
     ]
     # /admin is hidden from regular users — only visible in admin scope
     for admin_id in ADMIN_IDS:
         try:
-            await bot.set_my_commands(
-                admin_commands,
-                scope=BotCommandScopeChat(chat_id=admin_id)
-            )
+            await bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
         except Exception as e:
             logger.warning(f"Could not set admin commands for {admin_id}: {e}")
 
@@ -263,6 +271,7 @@ async def main():
 
     # Warn if no admins configured
     from config import ADMIN_IDS
+
     if not ADMIN_IDS:
         logger.warning("WARNING: ADMIN_IDS is empty! No one can access the admin panel.")
         logger.warning("Set ADMIN_IDS in .env: ADMIN_IDS=your_telegram_id")
@@ -271,8 +280,9 @@ async def main():
 
     # MED-006 FIX: Auto-complete past-due bookings on startup
     try:
-        from storage import get_past_bookings_for_completion
         from scheduler import auto_complete_booking as _auto_complete
+        from storage import get_past_bookings_for_completion
+
         _past = await get_past_bookings_for_completion()
         if _past:
             logger.info(f"Found {len(_past)} past-due bookings to auto-complete")
@@ -339,7 +349,7 @@ async def main():
         except (NotImplementedError, RuntimeError):
             # Windows: only SIGINT works via signal.signal; SIGTERM is best-effort.
             try:
-                signal.signal(_sig, lambda s, _f: _request_stop(_sig.name))
+                signal.signal(_sig, lambda s, _f, _sig=_sig: _request_stop(_sig.name))
             except (ValueError, OSError):
                 logger.warning(f"Could not install handler for {_sig.name}")
 
@@ -351,10 +361,7 @@ async def main():
                 return
             except TelegramConflictError:
                 if _attempt < 23:
-                    logger.warning(
-                        f"TelegramConflictError: another instance active. "
-                        f"Retry {_attempt + 1}/24 in 5s..."
-                    )
+                    logger.warning(f"TelegramConflictError: another instance active. Retry {_attempt + 1}/24 in 5s...")
                     await asyncio.sleep(5)
                 else:
                     logger.error("TelegramConflictError: max retries exceeded.")

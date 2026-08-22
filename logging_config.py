@@ -9,6 +9,7 @@ A `request_id` ContextVar is exposed so middleware can attach a UUID to every
 incoming update; downstream handlers and adapters inherit it for free via the
 `extra={…}` mechanism wrapped by `bind_request_id()`.
 """
+
 from __future__ import annotations
 
 import json
@@ -20,7 +21,7 @@ import uuid
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from logging import LogRecord
-from typing import Any, Optional
+from typing import Any
 
 # Per-asyncio-task request id. Default is "-" so logs without an id still
 # emit valid records.
@@ -48,14 +49,35 @@ class JsonFormatter(logging.Formatter):
     """Emit one JSON object per line. Standard fields + extras flattened."""
 
     # Standard LogRecord attributes we don't want to copy as 'extra'
-    _RESERVED = frozenset({
-        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
-        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
-        "created", "msecs", "relativeCreated", "thread", "threadName",
-        "processName", "process", "message", "asctime", "taskName",
-    })
+    _RESERVED = frozenset(
+        {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+            "asctime",
+            "taskName",
+        }
+    )
 
-    def format(self, record: LogRecord) -> str:  # noqa: D401
+    def format(self, record: LogRecord) -> str:
         payload: dict[str, Any] = {
             "ts": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
             "level": record.levelname,
@@ -83,9 +105,7 @@ class HumanFormatter(logging.Formatter):
 
     def format(self, record: LogRecord) -> str:
         rid = getattr(record, "request_id", None) or _request_id.get()
-        ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        ts = datetime.fromtimestamp(record.created, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
         short_name = record.name.split(".")[-1] if record.name else record.name
         base = f"{ts} [{record.levelname:<5}] {short_name}: {record.getMessage()}"
         if rid and rid != "-":
@@ -108,7 +128,7 @@ def _safe(value: Any) -> Any:
     return repr(value)
 
 
-def configure_logging(level: Optional[str] = None) -> None:
+def configure_logging(level: str | None = None) -> None:
     """Install our handlers; safe to call multiple times (idempotent)."""
     log_level = (level or os.getenv("LOG_LEVEL", "INFO")).upper()
     json_mode = os.getenv("LOG_JSON", "").strip().lower() in {"1", "true", "yes"}

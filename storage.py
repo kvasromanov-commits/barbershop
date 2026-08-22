@@ -1,10 +1,11 @@
-﻿import uuid
-import db as _db
-from datetime import timedelta
-import config
-import os
 import logging
+import os
+import uuid
+from datetime import timedelta
 from pathlib import Path
+
+import config
+import db as _db
 from tz_utils import get_now
 
 logger = logging.getLogger(__name__)
@@ -14,13 +15,11 @@ logger = logging.getLogger(__name__)
 # Schema migration helpers
 # ======================================================================
 
+
 async def _migrate_masters_columns(conn) -> None:
     """Add work_days / services columns if absent (both backends)."""
     if _db.is_postgres():
-        rows = await conn.fetch(
-            "SELECT column_name FROM information_schema.columns WHERE table_name=$1",
-            "masters"
-        )
+        rows = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name=$1", "masters")
         existing = {r["column_name"] for r in rows}
     else:
         rows = await conn.fetch("PRAGMA table_info(masters)")
@@ -28,9 +27,9 @@ async def _migrate_masters_columns(conn) -> None:
         await conn.commit()
 
     if "work_days" not in existing:
-        await conn.execute("ALTER TABLE masters ADD COLUMN work_days TEXT DEFAULT \'1,2,3,4,5,6\'")
+        await conn.execute("ALTER TABLE masters ADD COLUMN work_days TEXT DEFAULT '1,2,3,4,5,6'")
     if "services" not in existing:
-        await conn.execute("ALTER TABLE masters ADD COLUMN services TEXT DEFAULT \'\'")
+        await conn.execute("ALTER TABLE masters ADD COLUMN services TEXT DEFAULT ''")
     await conn.commit()
 
 
@@ -61,6 +60,7 @@ async def _migrate_master_prices(conn) -> None:
 # init_db
 # ======================================================================
 
+
 async def init_db() -> None:
     if _db.is_postgres():
         await _init_pg()
@@ -86,8 +86,7 @@ async def _init_pg() -> None:
             )
         """)
         await conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_slot "
-            "ON bookings(date, time, master) WHERE status=\'active\'"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_slot ON bookings(date, time, master) WHERE status='active'"
         )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -199,7 +198,6 @@ async def _init_pg() -> None:
 
 
 async def _init_sqlite() -> None:
-    import aiosqlite
     db_path = Path(config.DB_PATH)
     db_dir = db_path.parent
     db_dir.mkdir(parents=True, exist_ok=True)
@@ -228,8 +226,7 @@ async def _init_sqlite() -> None:
             )
         """)
         await conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_slot "
-            "ON bookings(date, time, master) WHERE status=\'active\'"
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_slot ON bookings(date, time, master) WHERE status='active'"
         )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -342,6 +339,7 @@ async def _init_sqlite() -> None:
 # Users
 # ======================================================================
 
+
 async def save_user(telegram_id: int, phone: str = "", username: str = "", first_name: str = ""):
     now = get_now(config.TIMEZONE).isoformat()
     async with _db.acquire() as conn:
@@ -349,29 +347,48 @@ async def save_user(telegram_id: int, phone: str = "", username: str = "", first
             await conn.execute(
                 "INSERT INTO users (telegram_id, phone, username, first_name, created_at) "
                 "VALUES (?, ?, ?, ?, ?) ON CONFLICT (telegram_id) DO NOTHING",
-                telegram_id, phone or "", username, first_name, now,
+                telegram_id,
+                phone or "",
+                username,
+                first_name,
+                now,
             )
             if phone:
                 await conn.execute(
                     "UPDATE users SET phone=?, username=?, first_name=? WHERE telegram_id=?",
-                    phone, username, first_name, telegram_id,
+                    phone,
+                    username,
+                    first_name,
+                    telegram_id,
                 )
             else:
                 await conn.execute(
                     "UPDATE users SET username=?, first_name=? WHERE telegram_id=?",
-                    username, first_name, telegram_id,
+                    username,
+                    first_name,
+                    telegram_id,
                 )
         else:
             await conn.execute(
                 "INSERT OR IGNORE INTO users (telegram_id, phone, username, first_name, created_at) VALUES (?, ?, ?, ?, ?)",
-                telegram_id, phone or "", username, first_name, now,
+                telegram_id,
+                phone or "",
+                username,
+                first_name,
+                now,
             )
             if phone:
-                await conn.execute("UPDATE users SET phone=?, username=?, first_name=? WHERE telegram_id=?",
-                                   phone, username, first_name, telegram_id)
+                await conn.execute(
+                    "UPDATE users SET phone=?, username=?, first_name=? WHERE telegram_id=?",
+                    phone,
+                    username,
+                    first_name,
+                    telegram_id,
+                )
             else:
-                await conn.execute("UPDATE users SET username=?, first_name=? WHERE telegram_id=?",
-                                   username, first_name, telegram_id)
+                await conn.execute(
+                    "UPDATE users SET username=?, first_name=? WHERE telegram_id=?", username, first_name, telegram_id
+                )
             await conn.commit()
 
 
@@ -383,6 +400,7 @@ async def get_user(telegram_id: int) -> dict | None:
 # ======================================================================
 # Bookings
 # ======================================================================
+
 
 async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
     """Save a booking. Returns booking_id (12-char hex) or None on conflict.
@@ -401,7 +419,9 @@ async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
             # Check if slot already booked
             existing = await conn.fetchrow(
                 "SELECT id FROM bookings WHERE date=? AND time=? AND master=? AND status='active'",
-                booking["date"], booking["time"], booking["master"],
+                booking["date"],
+                booking["time"],
+                booking["master"],
             )
             if existing:
                 return None
@@ -411,9 +431,11 @@ async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
             if bonus_spent and bonus_spent > 0:
                 tgid = int(booking["telegram_id"])
                 rows = await conn.execute_count(
-                    "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? "
-                    "WHERE telegram_id = ? AND bonuses >= ?",
-                    int(bonus_spent), now, tgid, int(bonus_spent),
+                    "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? WHERE telegram_id = ? AND bonuses >= ?",
+                    int(bonus_spent),
+                    now,
+                    tgid,
+                    int(bonus_spent),
                 )
                 if rows == 0:
                     # User doesn't have enough bonuses — refuse the booking.
@@ -425,8 +447,13 @@ async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
                 await conn.upsert(
                     "slot_locks",
                     ["date", "time", "master"],
-                    {"date": booking["date"], "time": booking["time"], "master": booking["master"],
-                     "locked_at": now, "expires_at": lock_expires},
+                    {
+                        "date": booking["date"],
+                        "time": booking["time"],
+                        "master": booking["master"],
+                        "locked_at": now,
+                        "expires_at": lock_expires,
+                    },
                 )
             except Exception as e:
                 logger.warning(f"slot_lock create failed (non-fatal): {e}")
@@ -439,14 +466,23 @@ async def save_booking(booking: dict, bonus_spent: int = 0) -> str | None:
                         "INSERT INTO bookings (id, date, time, name, telegram_id, username, "
                         "master, service, price, status, created_at) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)",
-                        booking_id, booking["date"], booking["time"], booking["name"],
-                        booking["telegram_id"], booking.get("username", ""),
-                        booking["master"], booking["service"], booking["price"], now,
+                        booking_id,
+                        booking["date"],
+                        booking["time"],
+                        booking["name"],
+                        booking["telegram_id"],
+                        booking.get("username", ""),
+                        booking["master"],
+                        booking["service"],
+                        booking["price"],
+                        now,
                     )
                     # Release slot_lock after successful insert
                     await conn.execute(
                         "DELETE FROM slot_locks WHERE date=? AND time=? AND master=?",
-                        booking["date"], booking["time"], booking["master"],
+                        booking["date"],
+                        booking["time"],
+                        booking["master"],
                     )
                     return booking_id
                 except Exception as e:
@@ -460,7 +496,8 @@ async def get_booked_slots(date: str, master: str) -> list[dict]:
     async with _db.acquire() as conn:
         return await conn.fetch(
             "SELECT time FROM bookings WHERE date=? AND master=? AND status='active'",
-            date, master,
+            date,
+            master,
         )
 
 
@@ -472,24 +509,25 @@ async def get_user_bookings(telegram_id: int) -> list[dict]:
         )
 
 
-async def cancel_booking(booking_id: str, telegram_id: int = None) -> dict | None:
+async def cancel_booking(booking_id: str, telegram_id: int | None = None) -> dict | None:
     async with _db.acquire() as conn:
         async with conn.transaction():
             if telegram_id:
                 row = await conn.fetchrow(
                     "SELECT * FROM bookings WHERE id=? AND status='active' AND telegram_id=?",
-                    booking_id, telegram_id,
+                    booking_id,
+                    telegram_id,
                 )
             else:
-                row = await conn.fetchrow(
-                    "SELECT * FROM bookings WHERE id=? AND status='active'", booking_id
-                )
+                row = await conn.fetchrow("SELECT * FROM bookings WHERE id=? AND status='active'", booking_id)
             if not row:
                 return None
             await conn.execute("UPDATE bookings SET status='cancelled' WHERE id=?", booking_id)
             await conn.execute(
                 "DELETE FROM slot_locks WHERE date=? AND time=? AND master=?",
-                row["date"], row["time"], row["master"],
+                row["date"],
+                row["time"],
+                row["master"],
             )
             return row
 
@@ -497,9 +535,7 @@ async def cancel_booking(booking_id: str, telegram_id: int = None) -> dict | Non
 async def complete_booking(booking_id: str) -> dict | None:
     async with _db.acquire() as conn:
         async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT * FROM bookings WHERE id=? AND status='active'", booking_id
-            )
+            row = await conn.fetchrow("SELECT * FROM bookings WHERE id=? AND status='active'", booking_id)
             if not row:
                 return None
             await conn.execute("UPDATE bookings SET status='completed' WHERE id=?", booking_id)
@@ -509,15 +545,15 @@ async def complete_booking(booking_id: str) -> dict | None:
 async def admin_cancel_booking(booking_id: str) -> dict | None:
     async with _db.acquire() as conn:
         async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT * FROM bookings WHERE id=? AND status='active'", booking_id
-            )
+            row = await conn.fetchrow("SELECT * FROM bookings WHERE id=? AND status='active'", booking_id)
             if not row:
                 return None
             await conn.execute("UPDATE bookings SET status='cancelled' WHERE id=?", booking_id)
             await conn.execute(
                 "DELETE FROM slot_locks WHERE date=? AND time=? AND master=?",
-                row["date"], row["time"], row["master"],
+                row["date"],
+                row["time"],
+                row["master"],
             )
             return row
 
@@ -525,9 +561,7 @@ async def admin_cancel_booking(booking_id: str) -> dict | None:
 async def admin_complete_booking(booking_id: str) -> dict | None:
     async with _db.acquire() as conn:
         async with conn.transaction():
-            row = await conn.fetchrow(
-                "SELECT * FROM bookings WHERE id=? AND status='active'", booking_id
-            )
+            row = await conn.fetchrow("SELECT * FROM bookings WHERE id=? AND status='active'", booking_id)
             if not row:
                 return None
             await conn.execute("UPDATE bookings SET status='completed' WHERE id=?", booking_id)
@@ -539,10 +573,12 @@ async def get_upcoming_bookings() -> list[dict]:
     today = now.strftime("%Y-%m-%d")
     async with _db.acquire() as conn:
         return await conn.fetch(
-            "SELECT * FROM bookings WHERE status='active' "
-            "AND (date>? OR (date=? AND time>=?)) ORDER BY date, time",
-            today, today, now.strftime("%H:%M"),
+            "SELECT * FROM bookings WHERE status='active' AND (date>? OR (date=? AND time>=?)) ORDER BY date, time",
+            today,
+            today,
+            now.strftime("%H:%M"),
         )
+
 
 async def get_upcoming_bookings_paged(offset: int = 0, limit: int = 5):
     """HIGH-003 FIX: SQL-level pagination - no full table scan in Python.
@@ -553,29 +589,40 @@ async def get_upcoming_bookings_paged(offset: int = 0, limit: int = 5):
     current_time = now.strftime("%H:%M")
     async with _db.acquire() as conn:
         if _db.is_postgres():
-            total = (await conn.fetchval(
-                "SELECT COUNT(*) FROM bookings WHERE status='active'"
-                " AND (date>$1 OR (date=$1 AND time>=$2))",
-                today, current_time,
-            )) or 0
+            total = (
+                await conn.fetchval(
+                    "SELECT COUNT(*) FROM bookings WHERE status='active' AND (date>$1 OR (date=$1 AND time>=$2))",
+                    today,
+                    current_time,
+                )
+            ) or 0
             rows = await conn.fetch(
                 "SELECT * FROM bookings WHERE status='active'"
                 " AND (date>$1 OR (date=$1 AND time>=$2)) ORDER BY date, time LIMIT $3 OFFSET $4",
-                today, current_time, limit, offset,
+                today,
+                current_time,
+                limit,
+                offset,
             )
         else:
-            total = (await conn.fetchval(
-                "SELECT COUNT(*) FROM bookings WHERE status='active'"
-                " AND (date>? OR (date=? AND time>=?))",
-                today, today, current_time,
-            )) or 0
+            total = (
+                await conn.fetchval(
+                    "SELECT COUNT(*) FROM bookings WHERE status='active' AND (date>? OR (date=? AND time>=?))",
+                    today,
+                    today,
+                    current_time,
+                )
+            ) or 0
             rows = await conn.fetch(
                 "SELECT * FROM bookings WHERE status='active'"
                 " AND (date>? OR (date=? AND time>=?)) ORDER BY date, time LIMIT ? OFFSET ?",
-                today, today, current_time, limit, offset,
+                today,
+                today,
+                current_time,
+                limit,
+                offset,
             )
         return list(rows), int(total)
-
 
 
 async def get_past_bookings_for_completion() -> list[dict]:
@@ -584,9 +631,10 @@ async def get_past_bookings_for_completion() -> list[dict]:
     current_time = now.strftime("%H:%M")
     async with _db.acquire() as conn:
         return await conn.fetch(
-            "SELECT * FROM bookings WHERE status='active' "
-            "AND (date<? OR (date=? AND time<?)) ORDER BY date, time",
-            today, today, current_time,
+            "SELECT * FROM bookings WHERE status='active' AND (date<? OR (date=? AND time<?)) ORDER BY date, time",
+            today,
+            today,
+            current_time,
         )
 
 
@@ -603,7 +651,8 @@ async def get_all_bookings_paged(offset: int = 0, limit: int = 50):
         total = (await conn.fetchval("SELECT COUNT(*) FROM bookings")) or 0
         rows = await conn.fetch(
             "SELECT * FROM bookings ORDER BY date DESC, time DESC LIMIT ? OFFSET ?",
-            limit, offset,
+            limit,
+            offset,
         )
         return list(rows), int(total)
 
@@ -621,7 +670,8 @@ async def export_bookings_csv_paged(offset: int = 0, limit: int = 1000):
         total = (await conn.fetchval("SELECT COUNT(*) FROM bookings")) or 0
         rows = await conn.fetch(
             "SELECT * FROM bookings ORDER BY date DESC, time DESC LIMIT ? OFFSET ?",
-            limit, offset,
+            limit,
+            offset,
         )
         return list(rows), int(total)
 
@@ -646,7 +696,8 @@ async def has_active_booking(telegram_id: int) -> bool:
     async with _db.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM bookings WHERE telegram_id=? AND status='active' AND date >= ?",
-            telegram_id, get_now(config.TIMEZONE).strftime("%Y-%m-%d"),
+            telegram_id,
+            get_now(config.TIMEZONE).strftime("%Y-%m-%d"),
         )
         return (count or 0) >= config.MAX_ACTIVE_BOOKINGS
 
@@ -656,7 +707,8 @@ async def user_rate_limit_check(telegram_id: int, window: int = 3600, max_attemp
     async with _db.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM bookings WHERE telegram_id=? AND created_at>=?",
-            telegram_id, since,
+            telegram_id,
+            since,
         )
         return (count or 0) < max_attempts
 
@@ -674,7 +726,8 @@ async def get_bookings_by_date_range(start_date: str, end_date: str) -> list[dic
     async with _db.acquire() as conn:
         return await conn.fetch(
             "SELECT * FROM bookings WHERE date BETWEEN ? AND ? ORDER BY date, time",
-            start_date, end_date,
+            start_date,
+            end_date,
         )
 
 
@@ -682,13 +735,20 @@ async def get_bookings_by_date_range(start_date: str, end_date: str) -> list[dic
 # Waitlist
 # ======================================================================
 
+
 async def add_to_waitlist(telegram_id: int, name: str, master: str, service: str, date: str, time: str):
     now = get_now(config.TIMEZONE).isoformat()
     async with _db.acquire() as conn:
         await conn.execute(
             "INSERT INTO waitlist (telegram_id, name, master, service, date, time, status, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, 'waiting', ?)",
-            telegram_id, name, master, service, date, time, now,
+            telegram_id,
+            name,
+            master,
+            service,
+            date,
+            time,
+            now,
         )
         await conn.commit()
 
@@ -697,7 +757,9 @@ async def get_waitlist_for_slot(date: str, time: str, master: str) -> list[dict]
     async with _db.acquire() as conn:
         return await conn.fetch(
             "SELECT * FROM waitlist WHERE date=? AND time=? AND master=? AND status='waiting' ORDER BY id",
-            date, time, master,
+            date,
+            time,
+            master,
         )
 
 
@@ -725,6 +787,7 @@ async def get_all_waitlist_paged(offset: int = 0, limit: int = 15):
             rows = await conn.fetch("SELECT * FROM waitlist ORDER BY created_at LIMIT ? OFFSET ?", limit, offset)
         return list(rows), int(total)
 
+
 async def get_user_waitlist(telegram_id: int) -> list[dict]:
     async with _db.acquire() as conn:
         return await conn.fetch(
@@ -735,15 +798,18 @@ async def get_user_waitlist(telegram_id: int) -> list[dict]:
 
 async def get_user_waitlist_count(telegram_id: int) -> int:
     async with _db.acquire() as conn:
-        return (await conn.fetchval(
-            "SELECT COUNT(*) FROM waitlist WHERE telegram_id=? AND status='waiting'",
-            telegram_id,
-        )) or 0
+        return (
+            await conn.fetchval(
+                "SELECT COUNT(*) FROM waitlist WHERE telegram_id=? AND status='waiting'",
+                telegram_id,
+            )
+        ) or 0
 
 
 # ======================================================================
 # Loyalty
 # ======================================================================
+
 
 async def update_loyalty(telegram_id: int, name: str = "") -> int:
     """BUG-3 / atomic-increment fix.
@@ -771,7 +837,8 @@ async def update_loyalty(telegram_id: int, name: str = "") -> int:
             # Step 1: atomic increment if the row already exists.
             rows = await conn.execute_count(
                 "UPDATE loyalty SET visits=visits+1, updated_at=? WHERE telegram_id=?",
-                now, telegram_id,
+                now,
+                telegram_id,
             )
             if rows == 0:
                 # Step 2: row did not exist — create it with visits=1.
@@ -781,14 +848,20 @@ async def update_loyalty(telegram_id: int, name: str = "") -> int:
                         "INSERT INTO loyalty "
                         "(telegram_id, name, visits, bonuses, ref_code, updated_at) "
                         "VALUES (?, ?, 1, 0, ?, ?) ON CONFLICT DO NOTHING",
-                        telegram_id, name, ref_code, now,
+                        telegram_id,
+                        name,
+                        ref_code,
+                        now,
                     )
                 else:
                     await conn.execute(
                         "INSERT OR IGNORE INTO loyalty "
                         "(telegram_id, name, visits, bonuses, ref_code, updated_at) "
                         "VALUES (?, ?, 1, 0, ?, ?)",
-                        telegram_id, name, ref_code, now,
+                        telegram_id,
+                        name,
+                        ref_code,
+                        now,
                     )
 
             # Step 3: read back the current visits value to keep the
@@ -807,14 +880,12 @@ async def add_bonus(telegram_id: int, amount: int) -> bool:
             return False
         await conn.execute(
             "UPDATE loyalty SET bonuses=bonuses+?, updated_at=? WHERE telegram_id=?",
-            amount, get_now(config.TIMEZONE).isoformat(), telegram_id,
+            amount,
+            get_now(config.TIMEZONE).isoformat(),
+            telegram_id,
         )
         await conn.commit()
         return True
-
-
-
-
 
 
 async def spend_bonus(telegram_id: int, amount: int) -> bool:
@@ -830,14 +901,17 @@ async def spend_bonus(telegram_id: int, amount: int) -> bool:
         now = get_now(config.TIMEZONE).isoformat()
         async with _db.acquire() as conn:
             rows = await conn.execute_count(
-                "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? "
-                "WHERE telegram_id = ? AND bonuses >= ?",
-                int(amount), now, int(telegram_id), int(amount),
+                "UPDATE loyalty SET bonuses = bonuses - ?, updated_at = ? WHERE telegram_id = ? AND bonuses >= ?",
+                int(amount),
+                now,
+                int(telegram_id),
+                int(amount),
             )
             return rows > 0
     except Exception as e:
         logger.error(f"spend_bonus failed for {telegram_id}/{amount}: {e}")
         return False
+
 
 async def get_loyalty(telegram_id: int) -> dict | None:
     async with _db.acquire() as conn:
@@ -857,10 +931,10 @@ async def get_loyalty_list_paged(offset: int = 0, limit: int = 50):
         total = (await conn.fetchval("SELECT COUNT(*) FROM loyalty")) or 0
         rows = await conn.fetch(
             "SELECT * FROM loyalty ORDER BY visits DESC LIMIT ? OFFSET ?",
-            limit, offset,
+            limit,
+            offset,
         )
         return list(rows), int(total)
-
 
 
 async def ensure_user_ref_code(telegram_id: int, name: str = "") -> str:
@@ -870,10 +944,9 @@ async def ensure_user_ref_code(telegram_id: int, name: str = "") -> str:
     Returns the ref_code.
     """
     import uuid as _uuid
+
     async with _db.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT ref_code FROM loyalty WHERE telegram_id=?", telegram_id
-        )
+        row = await conn.fetchrow("SELECT ref_code FROM loyalty WHERE telegram_id=?", telegram_id)
         if row and row["ref_code"]:
             return row["ref_code"]
         # Generate a new unique ref_code
@@ -883,18 +956,26 @@ async def ensure_user_ref_code(telegram_id: int, name: str = "") -> str:
             await conn.execute(
                 "INSERT INTO loyalty (telegram_id, name, visits, bonuses, ref_code, updated_at) "
                 "VALUES (?, ?, 0, 0, ?, ?) ON CONFLICT (telegram_id) DO UPDATE SET ref_code=? WHERE loyalty.ref_code IS NULL",
-                telegram_id, name, ref_code, now, ref_code,
+                telegram_id,
+                name,
+                ref_code,
+                now,
+                ref_code,
             )
         else:
             await conn.execute(
                 "INSERT OR IGNORE INTO loyalty (telegram_id, name, visits, bonuses, ref_code, updated_at) "
                 "VALUES (?, ?, 0, 0, ?, ?)",
-                telegram_id, name, ref_code, now,
+                telegram_id,
+                name,
+                ref_code,
+                now,
             )
             # If record existed but had no ref_code, set it
             await conn.execute(
                 "UPDATE loyalty SET ref_code=? WHERE telegram_id=? AND (ref_code IS NULL OR ref_code='')",
-                ref_code, telegram_id,
+                ref_code,
+                telegram_id,
             )
             await conn.commit()
         # Re-read to get actual value (race-safe)
@@ -905,9 +986,8 @@ async def ensure_user_ref_code(telegram_id: int, name: str = "") -> str:
 async def get_referral_count(telegram_id: int) -> int:
     """Return how many users registered via this user's referral link."""
     async with _db.acquire() as conn:
-        return (await conn.fetchval(
-            "SELECT COUNT(*) FROM referrals WHERE referrer_id=?", telegram_id
-        )) or 0
+        return (await conn.fetchval("SELECT COUNT(*) FROM referrals WHERE referrer_id=?", telegram_id)) or 0
+
 
 async def add_referral(referrer_id: int, referred_id: int) -> bool:
     if referrer_id == referred_id:
@@ -915,13 +995,16 @@ async def add_referral(referrer_id: int, referred_id: int) -> bool:
     async with _db.acquire() as conn:
         exists = await conn.fetchval(
             "SELECT id FROM referrals WHERE referrer_id=? AND referred_id=?",
-            referrer_id, referred_id,
+            referrer_id,
+            referred_id,
         )
         if exists:
             return False
         await conn.execute(
             "INSERT INTO referrals (referrer_id, referred_id, created_at) VALUES (?, ?, ?)",
-            referrer_id, referred_id, get_now(config.TIMEZONE).isoformat(),
+            referrer_id,
+            referred_id,
+            get_now(config.TIMEZONE).isoformat(),
         )
         await conn.commit()
         return True
@@ -940,7 +1023,8 @@ async def get_referrals_paged(offset: int = 0, limit: int = 50):
         total = (await conn.fetchval("SELECT COUNT(*) FROM referrals")) or 0
         rows = await conn.fetch(
             "SELECT * FROM referrals ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            limit, offset,
+            limit,
+            offset,
         )
         return list(rows), int(total)
 
@@ -958,6 +1042,7 @@ async def get_user_by_ref_code(ref_code: str) -> dict | None:
 # Reviews
 # ======================================================================
 
+
 async def save_review(booking_id: str, telegram_id: int, rating: int, comment: str = "") -> bool:
     async with _db.acquire() as conn:
         status_row = await conn.fetchrow("SELECT status FROM bookings WHERE id=?", booking_id)
@@ -970,7 +1055,11 @@ async def save_review(booking_id: str, telegram_id: int, rating: int, comment: s
             return False
         await conn.execute(
             "INSERT INTO reviews (booking_id, telegram_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?)",
-            booking_id, telegram_id, rating, comment, get_now(config.TIMEZONE).isoformat(),
+            booking_id,
+            telegram_id,
+            rating,
+            comment,
+            get_now(config.TIMEZONE).isoformat(),
         )
         await conn.commit()
         return True
@@ -989,7 +1078,8 @@ async def get_reviews_paged(offset: int = 0, limit: int = 15):
         total = (await conn.fetchval("SELECT COUNT(*) FROM reviews")) or 0
         rows = await conn.fetch(
             "SELECT * FROM reviews ORDER BY created_at DESC LIMIT ? OFFSET ?",
-            limit, offset,
+            limit,
+            offset,
         )
         return list(rows), int(total)
 
@@ -998,13 +1088,14 @@ async def get_reviews_paged(offset: int = 0, limit: int = 15):
 # Statistics
 # ======================================================================
 
+
 async def get_stats() -> dict:
     async with _db.acquire() as conn:
-        total    = await conn.fetchval("SELECT COUNT(*) FROM bookings") or 0
-        active   = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='active'") or 0
-        cancelled= await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='cancelled'") or 0
-        completed= await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='completed'") or 0
-        revenue  = await conn.fetchval("SELECT COALESCE(SUM(price), 0) FROM bookings WHERE status='completed'") or 0
+        total = await conn.fetchval("SELECT COUNT(*) FROM bookings") or 0
+        active = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='active'") or 0
+        cancelled = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='cancelled'") or 0
+        completed = await conn.fetchval("SELECT COUNT(*) FROM bookings WHERE status='completed'") or 0
+        revenue = await conn.fetchval("SELECT COALESCE(SUM(price), 0) FROM bookings WHERE status='completed'") or 0
         return {"total": total, "active": active, "cancelled": cancelled, "completed": completed, "revenue": revenue}
 
 
@@ -1043,9 +1134,13 @@ async def get_master_stats(master_name: str) -> dict:
             "FROM bookings WHERE master=?",
             master_name,
         )
-        return {"total": row["total"] or 0, "active": row["active"] or 0,
-                "completed": row["completed"] or 0, "cancelled": row["cancelled"] or 0,
-                "revenue": row["revenue"] or 0}
+        return {
+            "total": row["total"] or 0,
+            "active": row["active"] or 0,
+            "completed": row["completed"] or 0,
+            "cancelled": row["cancelled"] or 0,
+            "revenue": row["revenue"] or 0,
+        }
 
 
 async def get_service_stats(service_name: str) -> dict:
@@ -1058,8 +1153,12 @@ async def get_service_stats(service_name: str) -> dict:
             "FROM bookings WHERE service=?",
             service_name,
         )
-        return {"total": row["total"] or 0, "active": row["active"] or 0,
-                "completed": row["completed"] or 0, "revenue": row["revenue"] or 0}
+        return {
+            "total": row["total"] or 0,
+            "active": row["active"] or 0,
+            "completed": row["completed"] or 0,
+            "revenue": row["revenue"] or 0,
+        }
 
 
 async def get_active_bookings_count() -> int:
@@ -1078,14 +1177,19 @@ async def get_bookings_summary(date_str: str) -> dict:
             "FROM bookings WHERE date=?",
             date_str,
         )
-        return {"total": row["total"] or 0, "active": row["active"] or 0,
-                "cancelled": row["cancelled"] or 0, "completed": row["completed"] or 0,
-                "revenue": row["revenue"] or 0}
+        return {
+            "total": row["total"] or 0,
+            "active": row["active"] or 0,
+            "cancelled": row["cancelled"] or 0,
+            "completed": row["completed"] or 0,
+            "revenue": row["revenue"] or 0,
+        }
 
 
 # ======================================================================
 # Settings (key-value)
 # ======================================================================
+
 
 async def save_settings(key: str, value: str):
     async with _db.acquire() as conn:
@@ -1107,6 +1211,7 @@ async def get_all_settings() -> dict:
 # Masters
 # ======================================================================
 
+
 async def save_master(name: str, experience: str, specialization: str):
     """BUG-FIX: UPSERT only experience/specialization, NEVER reset work_days/services."""
     async with _db.acquire() as conn:
@@ -1114,17 +1219,23 @@ async def save_master(name: str, experience: str, specialization: str):
             await conn.execute(
                 "INSERT INTO masters (name, experience, specialization) VALUES (?, ?, ?) "
                 "ON CONFLICT (name) DO UPDATE SET experience=EXCLUDED.experience, specialization=EXCLUDED.specialization",
-                name, experience, specialization,
+                name,
+                experience,
+                specialization,
             )
         else:
             # SQLite: INSERT OR IGNORE first, then UPDATE — never touches work_days/services
             await conn.execute(
                 "INSERT OR IGNORE INTO masters (name, experience, specialization) VALUES (?, ?, ?)",
-                name, experience, specialization,
+                name,
+                experience,
+                specialization,
             )
             await conn.execute(
                 "UPDATE masters SET experience=?, specialization=? WHERE name=?",
-                experience, specialization, name,
+                experience,
+                specialization,
+                name,
             )
             await conn.commit()
 
@@ -1189,6 +1300,7 @@ async def set_master_services(master_name: str, services: list[str]) -> bool:
 # Services (global)
 # ======================================================================
 
+
 async def save_service(name: str, price: int):
     async with _db.acquire() as conn:
         await conn.upsert("services", ["name"], {"name": name, "price": price})
@@ -1210,12 +1322,14 @@ async def get_all_services() -> dict:
 # Per-master service prices
 # ======================================================================
 
+
 async def get_master_service_price(master: str, service: str) -> int | None:
     """Return master-specific price for a service, or None if not set."""
     async with _db.acquire() as conn:
         return await conn.fetchval(
             "SELECT price FROM master_service_prices WHERE master=? AND service=?",
-            master, service,
+            master,
+            service,
         )
 
 
@@ -1234,7 +1348,8 @@ async def delete_master_service_price(master: str, service: str) -> None:
     async with _db.acquire() as conn:
         await conn.execute(
             "DELETE FROM master_service_prices WHERE master=? AND service=?",
-            master, service,
+            master,
+            service,
         )
         await conn.commit()
 
@@ -1242,9 +1357,7 @@ async def delete_master_service_price(master: str, service: str) -> None:
 async def get_all_master_service_prices(master: str) -> dict[str, int]:
     """Return {service_name: price} for all custom prices of a master."""
     async with _db.acquire() as conn:
-        rows = await conn.fetch(
-            "SELECT service, price FROM master_service_prices WHERE master=?", master
-        )
+        rows = await conn.fetch("SELECT service, price FROM master_service_prices WHERE master=?", master)
         return {r["service"]: r["price"] for r in rows}
 
 
@@ -1255,7 +1368,9 @@ async def get_locked_slots(date: str, master: str) -> set[str]:
         async with _db.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT time FROM slot_locks WHERE date=? AND master=? AND expires_at > ?",
-                date, master, now_iso,
+                date,
+                master,
+                now_iso,
             )
             return {r["time"] for r in rows}
     except Exception as e:
@@ -1275,13 +1390,19 @@ async def get_effective_price(master: str, service: str) -> int:
 # Scheduler jobs
 # ======================================================================
 
+
 async def save_scheduler_job(job_id: str, run_date: str, job_type: str, booking_id: str):
     async with _db.acquire() as conn:
         await conn.upsert(
             "scheduler_jobs",
             ["id"],
-            {"id": job_id, "run_date": run_date, "job_type": job_type,
-             "booking_id": booking_id, "created_at": get_now(config.TIMEZONE).isoformat()},
+            {
+                "id": job_id,
+                "run_date": run_date,
+                "job_type": job_type,
+                "booking_id": booking_id,
+                "created_at": get_now(config.TIMEZONE).isoformat(),
+            },
         )
 
 
@@ -1319,6 +1440,7 @@ async def delete_old_scheduler_jobs():
 # Slot locks
 # ======================================================================
 
+
 async def create_slot_lock(date: str, time: str, master: str, ttl_minutes: int = 5):
     try:
         now = get_now(config.TIMEZONE)
@@ -1326,9 +1448,13 @@ async def create_slot_lock(date: str, time: str, master: str, ttl_minutes: int =
             await conn.upsert(
                 "slot_locks",
                 ["date", "time", "master"],
-                {"date": date, "time": time, "master": master,
-                 "locked_at": now.isoformat(),
-                 "expires_at": (now + timedelta(minutes=ttl_minutes)).isoformat()},
+                {
+                    "date": date,
+                    "time": time,
+                    "master": master,
+                    "locked_at": now.isoformat(),
+                    "expires_at": (now + timedelta(minutes=ttl_minutes)).isoformat(),
+                },
             )
     except Exception as e:
         logger.warning(f"Failed to create slot_lock {date}/{time}/{master}: {e}")
@@ -1339,7 +1465,9 @@ async def release_slot_lock(date: str, time: str, master: str):
         async with _db.acquire() as conn:
             await conn.execute(
                 "DELETE FROM slot_locks WHERE date=? AND time=? AND master=?",
-                date, time, master,
+                date,
+                time,
+                master,
             )
             await conn.commit()
     except Exception as e:
@@ -1384,6 +1512,7 @@ async def cleanup_expired_slot_locks() -> int:
 # Master Telegram IDs (stored in settings)
 # ======================================================================
 
+
 async def get_master_telegram_id(master_name: str) -> int | None:
     value = await get_settings(f"master_tg_{master_name}")
     try:
@@ -1407,7 +1536,7 @@ async def get_all_master_telegram_ids() -> dict:
         rows = await conn.fetch("SELECT key, value FROM settings WHERE key LIKE 'master_tg_%'")
         result = {}
         for r in rows:
-            master_name = r["key"][len("master_tg_"):]
+            master_name = r["key"][len("master_tg_") :]
             try:
                 result[master_name] = int(r["value"])
             except ValueError:

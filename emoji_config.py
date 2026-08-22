@@ -20,13 +20,11 @@ CUSTOM_EMOJIS = {
     "👤": "5260399854500191689",  # Пользователь, клиент - PREMIUM EMOJI
     "🗓": "5258105663359294787",  # Календарь альтернативный (дата) - PREMIUM EMOJI
     "📅": "5258105663359294787",  # Календарь (дата) - PREMIUM EMOJI
-    
     # Статусы
     "✅": "5260726538302660868",  # Успех, подтверждение - PREMIUM EMOJI (первый вариант)
     "❌": "5260342697075416641",  # Ошибка, отмена - PREMIUM EMOJI
-    "✓": "5260726538302660868",   # Галочка - PREMIUM EMOJI
-    "✗": "5260342697075416641",   # Крестик - PREMIUM EMOJI
-    
+    "✓": "5260726538302660868",  # Галочка - PREMIUM EMOJI
+    "✗": "5260342697075416641",  # Крестик - PREMIUM EMOJI
     # Информация и действия
     "📌": "5258461531464539536",  # Пин, закрепить - PREMIUM EMOJI
     "📍": "5258509201306557640",  # Локация, адрес - PREMIUM EMOJI
@@ -43,12 +41,10 @@ CUSTOM_EMOJIS = {
     "🎨": "5258450450448915742",  # Палитра, стиль - PREMIUM EMOJI
     "🔢": "5226513232549664618",  # Цифры, номер - PREMIUM EMOJI
     "🆔": "5226513232549664618",  # ID записи, номер - PREMIUM EMOJI
-    
     # Время и расписание
     "🕘": "5199457120428249992",  # Часы 9:00 - PREMIUM EMOJI
     "⏲": "5258258882022612173",  # Таймер - PREMIUM EMOJI
     "🕐": "5258258882022612173",  # Часы (время)
-    
     # Деньги и работа
     "💰": "5258204546391351475",  # Деньги, цена - PREMIUM EMOJI
     "📝": "5257965174979042426",  # Список, записи - PREMIUM EMOJI
@@ -57,7 +53,6 @@ CUSTOM_EMOJIS = {
     "💡": "5258216851472654189",  # Идея, совет - PREMIUM EMOJI
     "📖": "5258328383183396223",  # Книга, справка - PREMIUM EMOJI
     "💬": "5260535596941582167",  # Комментарий, отзыв - PREMIUM EMOJI
-    
     # Дополнительные действия
     "✈️": "5258073068852485953",  # Отправить/отправлено - PREMIUM EMOJI
     "✍️": "5258331647358540449",  # Написать/редактировать - PREMIUM EMOJI  # Пустой ящик (нет записей)
@@ -67,19 +62,16 @@ CUSTOM_EMOJIS = {
     "🤚": "5260249440450520061",  # Стоп/рука - PREMIUM EMOJI
     "👩‍🎨": "5258215635996908355",  # Художник женщина/мастер - PREMIUM EMOJI
     "💈": "5258215635996908355",  # Барбер полюс (барбершоп)
-    
     # Информация
     "ℹ️": "5258503720928288433",  # Информация - PREMIUM EMOJI
     "⬇️": "5258336354642697821",  # Стрелка вниз/указатель - PREMIUM EMOJI
     "👇": "5258336354642697821",  # Палец вниз, указатель
-    
     # Дополнительные
     "📞": "5258337316715373336",  # Телефон - PREMIUM EMOJI
     "☎️": "5258337316715373336",  # Телефон альт - PREMIUM EMOJI
     "📱": "5258337316715373336",  # Мобильный телефон - PREMIUM EMOJI
     "🏠": "5257963315258204021",  # Дом (главное меню) - PREMIUM EMOJI
     "👨‍💼": "5260399854500191689",  # Мастер/Барбер - PREMIUM EMOJI
-    "👨‍🎨": "5258450450448915742",  # Ножницы (стрижка)
     "📊": "5258330865674494479",  # График, статистика, анализ - PREMIUM EMOJI
 }
 
@@ -87,24 +79,24 @@ CUSTOM_EMOJIS = {
 def emoji(unicode_emoji: str, fallback: bool = True) -> str:
     """
     Конвертирует Unicode эмодзи в кастомный Telegram эмодзи
-    
+
     Args:
         unicode_emoji: Обычный Unicode эмодзи (например: "👋")
         fallback: Если True и ID не найден, вернуть обычный эмодзи
-        
+
     Returns:
         HTML код кастомного эмодзи: <tg-emoji emoji-id="123">👋</tg-emoji>
         Или обычный эмодзи если ID не найден и fallback=True
-        
+
     Examples:
         >>> emoji("👋")
         '<tg-emoji emoji-id="5368324170671202286">👋</tg-emoji>'
-        
+
         >>> emoji("🔥")  # Если нет в маппинге
         '🔥'
     """
     emoji_id = CUSTOM_EMOJIS.get(unicode_emoji)
-    
+
     if emoji_id and emoji_id != "ЗАМЕНИТЕ_НА_REAL_ID":
         return f'<tg-emoji emoji-id="{emoji_id}">{unicode_emoji}</tg-emoji>'
     else:
@@ -115,9 +107,10 @@ def emoji(unicode_emoji: str, fallback: bool = True) -> str:
 # Хелперы для часто используемых эмодзи
 # Использование: text = f"{E.WAVE} Привет!"
 
+
 class E:
     """Класс с константами для эмодзи (для удобства)"""
-    
+
     # Основные
     SCISSORS = emoji("👨‍🎨")
     BARBER = emoji("💈")
@@ -130,7 +123,7 @@ class E:
     USER = emoji("👤")  # PREMIUM
     HOME = emoji("🏠")  # PREMIUM - главное меню
     HOUSES = emoji("🏘")  # PREMIUM - главное меню альт
-    
+
     # Статусы
     CHECK = emoji("✅")  # PREMIUM
     CROSS = emoji("❌")  # PREMIUM
@@ -138,7 +131,7 @@ class E:
     WARNING = emoji("⚠️")  # Предупреждение
     CHECK_SMALL = emoji("✓")  # PREMIUM
     CROSS_SMALL = emoji("✗")  # PREMIUM
-    
+
     # Информация
     LIST = emoji("📋")
     NOTE = emoji("📝")  # PREMIUM - заметка
@@ -150,7 +143,7 @@ class E:
     PHONE = emoji("📞")  # PREMIUM
     PHONE_GESTURE = emoji("🤙")  # PREMIUM - телефон жест
     MOBILE = emoji("📱")  # PREMIUM
-    
+
     # Действия
     TARGET = emoji("🎯")
     CLAP = emoji("👏")  # PREMIUM - аплодисменты
@@ -185,19 +178,19 @@ class E:
 def check_emoji_config() -> dict:
     """
     Проверяет конфигурацию эмодзи на наличие незаполненных ID
-    
+
     Returns:
         dict со статистикой: total, configured, missing
     """
     total = len(CUSTOM_EMOJIS)
     missing = sum(1 for v in CUSTOM_EMOJIS.values() if v == "ЗАМЕНИТЕ_НА_REAL_ID")
     configured = total - missing
-    
+
     return {
         "total": total,
         "configured": configured,
         "missing": missing,
-        "percent": round(configured / total * 100, 1) if total > 0 else 0
+        "percent": round(configured / total * 100, 1) if total > 0 else 0,
     }
 
 
@@ -205,19 +198,19 @@ if __name__ == "__main__":
     # Самотестирование
     print("🔍 Проверка конфигурации эмодзи...")
     stats = check_emoji_config()
-    
-    print(f"\n📊 Статистика:")
+
+    print("\n📊 Статистика:")
     print(f"   Всего эмодзи: {stats['total']}")
     print(f"   Настроено: {stats['configured']}")
     print(f"   Не настроено: {stats['missing']}")
     print(f"   Прогресс: {stats['percent']}%")
-    
-    if stats['missing'] > 0:
+
+    if stats["missing"] > 0:
         print(f"\n⚠️ ВНИМАНИЕ: {stats['missing']} эмодзи без ID!")
         print("   Получите ID из @userinfobot и замените ЗАМЕНИТЕ_НА_REAL_ID")
     else:
         print("\n✅ Все эмодзи настроены!")
-    
+
     print("\n📝 Тест эмодзи:")
     print(f"   Привет: {emoji('👋')}")
     print(f"   Стрижка: {E.SCISSORS}")
@@ -228,6 +221,7 @@ class P:
     """Plain Unicode emojis for use in show_alert popups and plain text contexts.
     Telegram's show_alert does not render HTML, so use these instead of E.*
     """
+
     CHECK = "✅"
     CROSS = "❌"
     WARNING = "⚠️"

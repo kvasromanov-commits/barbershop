@@ -1,7 +1,12 @@
-
 """Tests for fsm_storage.py - FileStorage"""
+
+import os
+import pathlib
+import sys
+import tempfile
+
 import pytest
-import sys, pathlib, tempfile, os
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 from unittest.mock import MagicMock
 
@@ -9,6 +14,7 @@ from unittest.mock import MagicMock
 @pytest.fixture
 def fs(tmp_path):
     from fsm_storage import FileStorage
+
     return FileStorage(str(tmp_path / "fsm.json"))
 
 
@@ -107,6 +113,7 @@ class TestFileStorage:
 
     async def test_persistence_across_instances(self, tmp_path):
         from fsm_storage import FileStorage
+
         path = str(tmp_path / "fsm.json")
         fs1 = FileStorage(path)
         key = MagicMock()

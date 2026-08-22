@@ -146,10 +146,7 @@ await conn.execute("DELETE FROM slot_locks")
 
 ```python
 if not any(v == "free" for v in slots.values()):
-    await callback.answer(
-        "На сегодня свободных слотов нет. Выберите другой день.",
-        show_alert=True
-    )
+    await callback.answer("На сегодня свободных слотов нет. Выберите другой день.", show_alert=True)
     return  # ← выходим, клавиатура не отправляется
 ```
 
@@ -204,6 +201,7 @@ if not any(v == "free" for v in slots.values()):
 class AdminFilter(BaseFilter):
     async def __call__(self, event):
         return event.from_user.id in config.ADMIN_IDS
+
 
 admin_router.message.filter(AdminFilter())
 admin_router.callback_query.filter(AdminFilter())
@@ -536,10 +534,11 @@ UNIQUE INDEX `idx_bookings_slot` ON (date, time, master) WHERE status='active'. 
 
 ```python
 await send_with_retry(
-    message.bot, message.chat.id,
+    message.bot,
+    message.chat.id,
     f"{E.LOCK} <b>Панель управления</b>",
     reply_markup=keyboards.admin_kb(),
-    parse_mode="HTML"
+    parse_mode="HTML",
 )
 ```
 **OK** — parse_mode есть. Проверил.

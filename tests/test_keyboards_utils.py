@@ -1,13 +1,15 @@
-
 """Tests for keyboards.py: _safe_cb() and main_menu_kb() emoji/structure."""
-import sys, pathlib
+
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 class TestSafeCb:
-
     def _get(self):
         from keyboards import _safe_cb
+
         return _safe_cb
 
     def test_short_value_unchanged(self):
@@ -51,9 +53,9 @@ class TestSafeCb:
 
 
 class TestMainMenuKb:
-
     def _buttons(self):
         from keyboards import main_menu_kb
+
         kb = main_menu_kb()
         return [btn for row in kb.inline_keyboard for btn in row]
 
@@ -80,6 +82,8 @@ class TestMainMenuKb:
         assert expected == cbs
 
     def test_is_inline_keyboard_markup(self):
-        from keyboards import main_menu_kb
         from aiogram.types import InlineKeyboardMarkup
+
+        from keyboards import main_menu_kb
+
         assert isinstance(main_menu_kb(), InlineKeyboardMarkup)

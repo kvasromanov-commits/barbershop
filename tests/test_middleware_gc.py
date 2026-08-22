@@ -1,22 +1,28 @@
-
 """Tests for updated middleware.py GC fix (MED-03)."""
-import time, pytest, sys, pathlib
+
+import pathlib
+import sys
+import time
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 
 def _mw(max_requests=20, window=60):
     from middleware import RateLimitMiddleware
+
     return RateLimitMiddleware(max_requests=max_requests, window=window)
 
 
 def _ev(user_id=999):
     from helpers import make_message
+
     return make_message(user_id=user_id)
 
 
 class TestGcCounter:
-
     async def test_counter_increments(self):
         mw = _mw()
         assert mw._event_counter == 0
@@ -51,7 +57,6 @@ class TestGcCounter:
 
 
 class TestGcRemovesStale:
-
     def test_removes_expired_users(self):
         mw = _mw(window=60)
         old = time.time() - 120
@@ -84,7 +89,6 @@ class TestGcRemovesStale:
 
 
 class TestRateLimitWorks:
-
     async def test_passes_within_limit(self):
         mw = _mw(max_requests=3)
         handler = AsyncMock(return_value="ok")
@@ -95,6 +99,7 @@ class TestRateLimitWorks:
 
     async def test_blocks_over_limit(self):
         from aiogram.types import Message
+
         mw = _mw(max_requests=2)
         handler = AsyncMock(return_value="ok")
         ev = MagicMock(spec=Message)

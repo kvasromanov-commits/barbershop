@@ -1,80 +1,107 @@
 import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+
 
 def test_start_monitoring():
     import monitoring
+
     monitoring._start_time = None
     monitoring.start_monitoring()
     assert monitoring._start_time is not None
 
+
 def test_get_uptime_after_start():
     import monitoring
+
     monitoring.start_monitoring()
     time.sleep(0.01)
     assert monitoring.get_uptime() > 0
 
+
 def test_get_uptime_before_start():
     import monitoring
+
     monitoring._start_time = None
     assert monitoring.get_uptime() == 0
 
+
 def test_format_seconds():
     import monitoring
+
     assert monitoring.format_uptime(45) == "45s"
+
 
 def test_format_minutes():
     import monitoring
+
     assert monitoring.format_uptime(125) == "2m 5s"
+
 
 def test_format_hours():
     import monitoring
+
     assert monitoring.format_uptime(3725) == "1h 2m 5s"
+
 
 def test_format_zero():
     import monitoring
+
     assert monitoring.format_uptime(0) == "0s"
+
 
 @pytest.mark.asyncio
 async def test_check_db_ok():
     """check_db_health now uses db.acquire() instead of aiosqlite directly."""
-    import monitoring
     import db as _db
+    import monitoring
+
     conn_mock = AsyncMock()
     conn_mock.fetchval = AsyncMock(return_value=1)
-    from unittest.mock import patch
     from contextlib import asynccontextmanager
+    from unittest.mock import patch
+
     @asynccontextmanager
     async def _fake_acquire():
         yield conn_mock
+
     with patch.object(_db, "acquire", _fake_acquire):
         result = await monitoring.check_db_health()
     assert result is True
 
+
 @pytest.mark.asyncio
 async def test_check_db_fail():
     """check_db_health returns False when DB raises."""
-    import monitoring
-    import db as _db
     from contextlib import asynccontextmanager
+
+    import db as _db
+    import monitoring
+
     @asynccontextmanager
     async def _fail_acquire():
         raise Exception("simulated DB error")
         yield
+
     with patch.object(_db, "acquire", _fail_acquire):
         result = await monitoring.check_db_health()
     assert result is False
 
+
 @pytest.mark.asyncio
 async def test_check_storage_ok():
     import monitoring
+
     assert await monitoring.check_storage_health() is True
+
 
 @pytest.mark.asyncio
 async def test_check_storage_fail(tmp_path, monkeypatch):
     """check_storage_health returns False when FSM JSON file is corrupt."""
-    import monitoring
     import config
+    import monitoring
+
     monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "db.db"))
     fsm_file = tmp_path / "fsm_state.json"
     fsm_file.write_bytes(b"\xff\xfe broken json {{{")
@@ -82,23 +109,31 @@ async def test_check_storage_fail(tmp_path, monkeypatch):
     result = await monitoring.check_storage_health()
     assert result is False
 
+
 @pytest.mark.asyncio
 async def test_scheduler_running():
     import monitoring
-    ms = MagicMock(); ms.running = True
+
+    ms = MagicMock()
+    ms.running = True
     with patch("scheduler.scheduler", ms):
         assert await monitoring.check_scheduler_health() is True
+
 
 @pytest.mark.asyncio
 async def test_scheduler_not_running():
     import monitoring
-    ms = MagicMock(); ms.running = False
+
+    ms = MagicMock()
+    ms.running = False
     with patch("scheduler.scheduler", ms):
         assert await monitoring.check_scheduler_health() is False
+
 
 @pytest.mark.asyncio
 async def test_scheduler_exception():
     import monitoring
+
     with patch("monitoring.scheduler", create=True) as ms:
         ms.scheduler = None
         type(ms).running = property(lambda self: (_ for _ in ()).throw(Exception("e")))
@@ -106,23 +141,31 @@ async def test_scheduler_exception():
     # Should return False or True depending on import - just check it runs
     assert isinstance(result, bool)
 
+
 @pytest.mark.asyncio
 async def test_health_ok():
     import monitoring
+
     monitoring.start_monitoring()
-    with (patch.object(monitoring, "check_db_health", AsyncMock(return_value=True)),
-         patch.object(monitoring, "check_storage_health", AsyncMock(return_value=True)),
-         patch.object(monitoring, "check_scheduler_health", AsyncMock(return_value=True))):
+    with (
+        patch.object(monitoring, "check_db_health", AsyncMock(return_value=True)),
+        patch.object(monitoring, "check_storage_health", AsyncMock(return_value=True)),
+        patch.object(monitoring, "check_scheduler_health", AsyncMock(return_value=True)),
+    ):
         s = await monitoring.get_health_status()
     assert s["status"] == "ok"
     assert s["checks"]["database"] == "ok"
 
+
 @pytest.mark.asyncio
 async def test_health_degraded():
     import monitoring
+
     monitoring.start_monitoring()
-    with (patch.object(monitoring, "check_db_health", AsyncMock(return_value=False)),
-         patch.object(monitoring, "check_storage_health", AsyncMock(return_value=True)),
-         patch.object(monitoring, "check_scheduler_health", AsyncMock(return_value=True))):
+    with (
+        patch.object(monitoring, "check_db_health", AsyncMock(return_value=False)),
+        patch.object(monitoring, "check_storage_health", AsyncMock(return_value=True)),
+        patch.object(monitoring, "check_scheduler_health", AsyncMock(return_value=True)),
+    ):
         s = await monitoring.get_health_status()
     assert s["status"] == "degraded"

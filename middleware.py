@@ -1,12 +1,12 @@
+import asyncio
 import logging
 import time
-import asyncio
+
 from aiogram import BaseMiddleware
-from aiogram.types import Message, CallbackQuery
-from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
 
 import config
-from logging_config import bind_request_id, new_request_id
+from logging_config import new_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ class RequestIDMiddleware(BaseMiddleware):
         if update_id is not None:
             # Bind the request id to something traceable (rounded update_id + uuid)
             from logging_config import bind_request_id as _bind
+
             _bind(f"upd{update_id}-" + _current_rid_short())
         data["request_id"] = get_request_id_safe()
         try:
@@ -42,17 +43,20 @@ class RequestIDMiddleware(BaseMiddleware):
 
 def _current_rid_short() -> str:
     from logging_config import get_request_id as _get
+
     return _get()[:8]
 
 
 def get_request_id_safe() -> str:
     from logging_config import get_request_id as _get
+
     return _get()
 
 
 class RateLimitMiddleware(BaseMiddleware):
     """Hybrid rate limiter -- in-memory with fast access.
     MED-03 FIX: GC runs every 100 events (not 1000) to prevent RAM growth."""
+
     def __init__(self, max_requests: int = 20, window: int = 60):
         self.max_requests = max_requests
         self.window = window
@@ -63,8 +67,7 @@ class RateLimitMiddleware(BaseMiddleware):
     def _cleanup_old_entries(self, now: float) -> None:
         """Remove entries for users with no recent requests."""
         cutoff = now - self.window
-        stale_keys = [uid for uid, ts_list in self.user_requests.items()
-                      if not ts_list or ts_list[-1] < cutoff]
+        stale_keys = [uid for uid, ts_list in self.user_requests.items() if not ts_list or ts_list[-1] < cutoff]
         for k in stale_keys:
             del self.user_requests[k]
 
@@ -80,9 +83,7 @@ class RateLimitMiddleware(BaseMiddleware):
             now2 = time.time()
             if admin_key not in self.user_requests:
                 self.user_requests[admin_key] = []
-            self.user_requests[admin_key] = [
-                t for t in self.user_requests[admin_key] if (now2 - t) < self.window
-            ]
+            self.user_requests[admin_key] = [t for t in self.user_requests[admin_key] if (now2 - t) < self.window]
             if len(self.user_requests[admin_key]) >= self.max_requests * 5:
                 logger.warning(f"Admin rate limit hit for {user_id}")
                 if isinstance(event, Message):
@@ -103,12 +104,12 @@ class RateLimitMiddleware(BaseMiddleware):
         if user_id not in self.user_requests:
             self.user_requests[user_id] = []
 
-        self.user_requests[user_id] = [
-            t for t in self.user_requests[user_id] if (now - t) < self.window
-        ]
+        self.user_requests[user_id] = [t for t in self.user_requests[user_id] if (now - t) < self.window]
 
         if len(self.user_requests[user_id]) >= self.max_requests:
-            logger.warning(f"Rate limit hit for user {user_id}: {len(self.user_requests[user_id])} requests in {self.window}s")
+            logger.warning(
+                f"Rate limit hit for user {user_id}: {len(self.user_requests[user_id])} requests in {self.window}s"
+            )
             if isinstance(event, Message):
                 await event.answer("Слишком много запросов. Подождите немного.")
             elif isinstance(event, CallbackQuery):
@@ -143,6 +144,7 @@ class GlobalConcurrencyMiddleware(BaseMiddleware):
     a handler that awaits a long DB call holds the permit for that duration,
     which is exactly the backpressure we want.
     """
+
     def __init__(self, limit: int = 64):
         super().__init__()
         self._sem = asyncio.Semaphore(max(1, limit))

@@ -1,9 +1,10 @@
-import shutil
-import os
+import asyncio
 import gzip
 import logging
-import asyncio
+import os
+import shutil
 from datetime import datetime
+
 import config
 
 logger = logging.getLogger(__name__)
@@ -15,13 +16,23 @@ async def _pg_dump(database_url: str, backup_file: str) -> bool:
     """CRIT-01 FIX: Backup PostgreSQL using asyncpg (SQL INSERT dump, gzip-compressed)."""
     try:
         import asyncpg
+
         conn = await asyncpg.connect(database_url, command_timeout=60)
         # M-8 FIX: use repeatable-read transaction for consistent snapshot
         await conn.execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         tables = [
-            "users", "bookings", "waitlist", "loyalty", "referrals",
-            "reviews", "settings", "masters", "services",
-            "scheduler_jobs", "slot_locks", "master_service_prices",
+            "users",
+            "bookings",
+            "waitlist",
+            "loyalty",
+            "referrals",
+            "reviews",
+            "settings",
+            "masters",
+            "services",
+            "scheduler_jobs",
+            "slot_locks",
+            "master_service_prices",
         ]
         lines = [f"-- Barbershop DB dump {datetime.now().isoformat()}", ""]
         for table in tables:
@@ -41,9 +52,7 @@ async def _pg_dump(database_url: str, backup_file: str) -> bool:
                             vals.append(str(v))
                         else:
                             vals.append("'" + str(v).replace("'", "''") + "'")
-                    lines.append(
-                        f"INSERT INTO {table} ({cols_sql}) VALUES ({', '.join(vals)}) ON CONFLICT DO NOTHING;"
-                    )
+                    lines.append(f"INSERT INTO {table} ({cols_sql}) VALUES ({', '.join(vals)}) ON CONFLICT DO NOTHING;")
                 lines.append("")
             except Exception as te:
                 logger.warning(f"pg_dump: skipped table {table}: {te}")
@@ -96,7 +105,7 @@ def cleanup_old_backups(max_backups: int = 30):
         if not os.path.exists(_BACKUP_DIR):
             return
         all_files = sorted(os.listdir(_BACKUP_DIR))
-        backup_files = [f for f in all_files if f.endswith(".db.gz") or f.endswith(".sql.gz")]
+        backup_files = [f for f in all_files if f.endswith((".db.gz", ".sql.gz"))]
         if len(backup_files) > max_backups:
             for f in backup_files[:-max_backups]:
                 os.remove(os.path.join(_BACKUP_DIR, f))

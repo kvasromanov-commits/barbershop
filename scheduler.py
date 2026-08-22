@@ -1,16 +1,18 @@
+import asyncio
 import html
 import logging
-import asyncio
-from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+
+from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
-import messages
-from emoji_config import E
-import keyboards
-import storage
+
 import config
+import keyboards
+import messages
+import storage
+from emoji_config import E
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,6 @@ async def auto_complete_booking(bot, booking: dict):
                         logger.error(f"Failed to send loyalty reward: {_le}")
             except Exception as _le:
                 logger.error(f"Failed to update loyalty {completed['id']}: {_le}")
-
-            
 
             # HIGH-03 FIX: html.escape all user-controlled fields in HTML message
             admin_text = f"{E.CHECK} <b>Запись завершена</b>\n\n"
@@ -194,7 +194,12 @@ async def schedule_reminders(bot, booking: dict):
 
 
 async def cancel_reminders(booking_id: str):
-    for job_id in [f"reminder_24h_{booking_id}", f"reminder_2h_{booking_id}", f"auto_complete_{booking_id}", f"review_{booking_id}"]:
+    for job_id in [
+        f"reminder_24h_{booking_id}",
+        f"reminder_2h_{booking_id}",
+        f"auto_complete_{booking_id}",
+        f"review_{booking_id}",
+    ]:
         try:
             scheduler.remove_job(job_id)
         except Exception:
@@ -209,14 +214,14 @@ async def start_scheduler(bot):
     if not scheduler.running:
         scheduler.start()
         logger.info("Scheduler started")
-        
+
         # Schedule daily cleanup of old bookings (runs at 3 AM daily)
         scheduler.add_job(
             cleanup_old_bookings_job,
-            trigger='cron',
+            trigger="cron",
             hour=3,
             minute=0,
-            id='cleanup_old_bookings',
+            id="cleanup_old_bookings",
             replace_existing=True,
         )
         logger.info("Scheduled daily cleanup of old bookings at 3:00 AM")
@@ -224,10 +229,10 @@ async def start_scheduler(bot):
         # MED-006 FIX: Schedule daily backup at 3:30 AM instead of running at startup
         scheduler.add_job(
             backup_database_job,
-            trigger='cron',
+            trigger="cron",
             hour=3,
             minute=30,
-            id='daily_backup',
+            id="daily_backup",
             replace_existing=True,
         )
         logger.info("Scheduled daily backup at 3:30 AM")
@@ -235,20 +240,20 @@ async def start_scheduler(bot):
         # BUG-C4 FIX: Periodic cleanup of expired slot_locks every 2 minutes
         scheduler.add_job(
             cleanup_slot_locks_job,
-            trigger='interval',
+            trigger="interval",
             minutes=2,
-            id='cleanup_slot_locks',
+            id="cleanup_slot_locks",
             replace_existing=True,
         )
         logger.info("Scheduled periodic slot_locks cleanup every 2 minutes")
-        
+
         # Recovery: load jobs from DB and reschedule them
         try:
             jobs = await storage.get_all_scheduler_jobs()
             tz = ZoneInfo(config.TIMEZONE)
             now = datetime.now(tz)
             recovered = 0
-            
+
             for job in jobs:
                 try:
                     run_date_str = job["run_date"]
@@ -259,17 +264,17 @@ async def start_scheduler(bot):
                         # Job is in the past, skip it
                         await storage.remove_scheduler_job(job["id"])
                         continue
-                    
+
                     booking_id = job["booking_id"]
                     job_type = job["job_type"]
-                    
+
                     # Get booking details
                     booking = await storage.get_booking_with_user(booking_id)
                     if not booking or booking.get("status") != "active":
                         # Booking no longer active, remove job
                         await storage.remove_scheduler_job(job["id"])
                         continue
-                    
+
                     # Reschedule the job based on type
                     if job_type == "reminder_24h":
                         scheduler.add_job(
@@ -307,11 +312,11 @@ async def start_scheduler(bot):
                             replace_existing=True,
                         )
                         recovered += 1
-                    
+
                 except Exception as e:
                     logger.error(f"Failed to recover job {job['id']}: {e}")
                     continue
-            
+
             logger.info(f"Scheduler recovery: {recovered} jobs recovered from DB")
         except Exception as e:
             logger.error(f"Scheduler recovery failed: {e}")
@@ -326,8 +331,6 @@ async def cleanup_old_bookings_job():
         logger.error(f"Failed to cleanup old bookings: {e}")
 
 
-
-
 async def cleanup_slot_locks_job():
     """BUG-C4 FIX: Periodic job to remove expired slot_locks every 2 minutes.
     Prevents ghost-locked slots when users abandon booking mid-flow."""
@@ -337,6 +340,7 @@ async def cleanup_slot_locks_job():
             logger.debug(f"cleanup_slot_locks_job: cleared {deleted} expired lock(s)")
     except Exception as e:
         logger.error(f"cleanup_slot_locks_job failed: {e}")
+
 
 def shutdown_scheduler():
     if scheduler.running:
@@ -350,8 +354,8 @@ def shutdown_scheduler():
 async def backup_database_job():
     """MED-006 FIX: Daily backup job at 3:30 AM - moved from startup to scheduler.
     Runs in thread pool to avoid blocking event loop."""
-    import asyncio
     from backup import backup_database, cleanup_old_backups
+
     try:
         await asyncio.to_thread(backup_database)
         await asyncio.to_thread(cleanup_old_backups)

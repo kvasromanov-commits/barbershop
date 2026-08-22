@@ -10,6 +10,7 @@ Covers the items left open after the first QA commit:
 
 Run: pytest tests/test_audit_followup.py -v
 """
+
 import asyncio
 import sys
 from pathlib import Path
@@ -18,12 +19,12 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import middleware  # noqa: E402
-import bot as bot_module  # noqa: E402
-import keyboards  # noqa: E402
-import handlers.admin as admin_module  # noqa: E402
-import handlers.start as start_module  # noqa: E402
-import config  # noqa: E402
+import bot as bot_module
+import config
+import handlers.admin as admin_module
+import handlers.start as start_module
+import keyboards
+import middleware
 
 
 # =============================================================================

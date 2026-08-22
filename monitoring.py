@@ -28,6 +28,7 @@ async def check_db_health() -> bool:
     """Check if database is accessible."""
     try:
         import db as _db
+
         async with _db.acquire() as conn:
             await conn.fetchval("SELECT 1")
         return True
@@ -49,6 +50,7 @@ async def check_storage_health() -> bool:
             # P1 FIX: use the modern `redis` async client that aiogram actually depends on
             try:
                 import redis.asyncio as redis_async
+
                 r = redis_async.from_url(redis_url, socket_connect_timeout=3)
                 await r.ping()
                 await r.aclose()
@@ -60,7 +62,7 @@ async def check_storage_health() -> bool:
             fsm_file = Path(_cfg.DB_PATH).parent / "fsm_state.json"
             fsm_file.parent.mkdir(parents=True, exist_ok=True)
             if fsm_file.exists():
-                with open(fsm_file, "r", encoding="utf-8") as f:
+                with open(fsm_file, encoding="utf-8") as f:  # noqa: ASYNC230
                     json.load(f)
         return True
     except Exception as e:
@@ -72,6 +74,7 @@ async def check_scheduler_health() -> bool:
     """Check if scheduler is running."""
     try:
         from scheduler import scheduler
+
         return scheduler.running
     except Exception as e:
         logger.error(f"Scheduler health check failed: {e}")
@@ -94,7 +97,7 @@ async def get_health_status() -> dict:
             "database": "ok" if db_ok else "error",
             "storage": "ok" if storage_ok else "error",
             "scheduler": "ok" if scheduler_ok else "error",
-        }
+        },
     }
 
 

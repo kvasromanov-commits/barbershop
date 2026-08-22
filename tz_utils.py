@@ -5,10 +5,10 @@ Migrated from pytz to stdlib `zoneinfo` so the project has a single TZ library
 `tzdata` is required for IANA zones to resolve on minimal Linux images where
 `/usr/share/zoneinfo` is stripped — pinned in requirements.txt.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 DEFAULT_TIMEZONE: str = "Asia/Almaty"

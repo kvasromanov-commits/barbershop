@@ -1,19 +1,20 @@
-import re
 import html
 import logging
-from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ReplyKeyboardRemove
-from aiogram.filters import CommandStart, Command
+import re
+
+from aiogram import F, Router
+from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
-import messages
-import keyboards
 import config
-import storage
+import keyboards
+import messages
 import scheduler
-from utils import send_with_retry, edit_with_retry, notify_admins
+import storage
 from emoji_config import E
+from utils import edit_with_retry, notify_admins, send_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ class ContactStates(StatesGroup):
 async def cmd_start(message: Message, state: FSMContext):
     await state.clear()
     telegram_id = message.from_user.id
-    
+
     # TASK-07: Referral system - handle /start ref_CODE
     ref_code = None
     if message.text and len(message.text.split()) > 1:
@@ -36,7 +37,7 @@ async def cmd_start(message: Message, state: FSMContext):
         if len(args) > 0 and args[0].startswith("ref_"):
             ref_code = args[0][4:]  # Remove "ref_" prefix
             logger.info(f"User {telegram_id} started with referral code: {ref_code}")
-    
+
     user = await storage.get_user(telegram_id)
     if not user:
         await storage.save_user(
@@ -44,7 +45,7 @@ async def cmd_start(message: Message, state: FSMContext):
             username=message.from_user.username or "",
             first_name=message.from_user.first_name or "",
         )
-        
+
         # TASK-07: Process referral if this is a new user
         if ref_code:
             try:
@@ -57,7 +58,7 @@ async def cmd_start(message: Message, state: FSMContext):
                         # Award bonus to referrer
                         await storage.add_bonus(referrer["telegram_id"], config.REFERRAL_BONUS)
                         logger.info(f"Referral successful: {referrer['telegram_id']} referred {telegram_id}")
-                        
+
                         # Notify referrer
                         try:
                             referrer_text = (
@@ -66,33 +67,25 @@ async def cmd_start(message: Message, state: FSMContext):
                                 f"зарегистрировался по вашей ссылке.\n\n"
                                 f"Вы получили {config.REFERRAL_BONUS} бонусов!"
                             )
-                            await message.bot.send_message(
-                                referrer["telegram_id"],
-                                referrer_text,
-                                parse_mode="HTML"
-                            )
+                            await message.bot.send_message(referrer["telegram_id"], referrer_text, parse_mode="HTML")
                         except Exception as e:
                             logger.error(f"Failed to notify referrer: {e}")
-                        
+
                         # Notify new user
                         await send_with_retry(
-                            message.bot, message.chat.id,
+                            message.bot,
+                            message.chat.id,
                             f"{E.CHECK} <b>Добро пожаловать!</b>\n\n"
                             f"Вы зарегистрировались по реферальной ссылке.\n"
                             f"Ваш друг получил {config.REFERRAL_BONUS} бонусов!",
-                            parse_mode="HTML"
+                            parse_mode="HTML",
                         )
             except Exception as e:
                 logger.error(f"Failed to process referral: {e}")
 
     # TASK-10: Remove phone barrier - show main menu immediately, ask for phone later
     text = messages.welcome_text(config.BARBERSHOP_NAME)
-    await send_with_retry(
-        message.bot, message.chat.id,
-        text,
-        reply_markup=keyboards.main_menu_kb(),
-        parse_mode="HTML"
-    )
+    await send_with_retry(message.bot, message.chat.id, text, reply_markup=keyboards.main_menu_kb(), parse_mode="HTML")
     return
 
 
@@ -114,7 +107,8 @@ async def handle_contact(message: Message, state: FSMContext):
             phone = cleaned
         else:
             await send_with_retry(
-                message.bot, message.chat.id,
+                message.bot,
+                message.chat.id,
                 f"{E.CROSS} Неверный формат номера.\n"
                 f"Введите в формате: <code>+7 700 123 45 67</code>\n"
                 f"Или нажмите кнопку «Поделиться номером».",
@@ -123,7 +117,8 @@ async def handle_contact(message: Message, state: FSMContext):
             return
     else:
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             f"{E.CROSS} Пожалуйста, введите номер телефона или нажмите кнопку «Поделиться номером».",
             parse_mode="HTML",
         )
@@ -140,16 +135,14 @@ async def handle_contact(message: Message, state: FSMContext):
     await state.clear()
     # BUG-PHONE FIX: сначала убираем ReplyKeyboard (кнопку шаринга номера), затем показываем inline-меню
     await send_with_retry(
-        message.bot, message.chat.id,
+        message.bot,
+        message.chat.id,
         f"{E.CHECK} <b>Номер сохранён!</b>",
         reply_markup=ReplyKeyboardRemove(),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await send_with_retry(
-        message.bot, message.chat.id,
-        messages.MAIN_MENU_TEXT,
-        reply_markup=keyboards.main_menu_kb(),
-        parse_mode="HTML"
+        message.bot, message.chat.id, messages.MAIN_MENU_TEXT, reply_markup=keyboards.main_menu_kb(), parse_mode="HTML"
     )
 
 
@@ -158,12 +151,8 @@ async def cb_share_phone(callback: CallbackQuery, state: FSMContext):
     # Only Telegram contact share button
     text = f"{E.PHONE} <b>Поделитесь номером телефона</b>\n\n"
     text += "Нажмите кнопку ниже, чтобы бот получил ваш номер."
-    
-    await callback.message.answer(
-        text,
-        reply_markup=keyboards.phone_kb(),
-        parse_mode="HTML"
-    )
+
+    await callback.message.answer(text, reply_markup=keyboards.phone_kb(), parse_mode="HTML")
     await state.set_state(ContactStates.waiting_contact)
     await callback.answer()
 
@@ -172,10 +161,7 @@ async def cb_share_phone(callback: CallbackQuery, state: FSMContext):
 async def cb_main_menu(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await edit_with_retry(
-        callback.message,
-        messages.MAIN_MENU_TEXT,
-        reply_markup=keyboards.main_menu_kb(),
-        parse_mode="HTML"
+        callback.message, messages.MAIN_MENU_TEXT, reply_markup=keyboards.main_menu_kb(), parse_mode="HTML"
     )
     await callback.answer()
 
@@ -185,12 +171,13 @@ async def cb_my_bookings(callback: CallbackQuery):
     bookings = await storage.get_user_bookings(callback.from_user.id)
     if not bookings:
         from emoji_config import P
+
         await callback.answer(f"{P.EMPTY} У вас нет активных записей", show_alert=True)
         return
-    
+
     text = f"{E.LIST} <b>Ваши активные записи:</b>\n\n"
     for i, b in enumerate(bookings, 1):
-        date_str = keyboards._format_date(b['date'])
+        date_str = keyboards._format_date(b["date"])
         text += f"<b>{i}. {date_str} в {b['time']}</b>\n"
         # CRIT-3 FIX: master/service come from admin input or booking form.
         # html.escape() prevents untrusted masters from injecting <b>/<a href=...>.
@@ -198,9 +185,9 @@ async def cb_my_bookings(callback: CallbackQuery):
         text += f"   {E.BARBER} Услуга: {html.escape(str(b['service']))}\n"
         text += f"   {E.MONEY} Цена: {b['price']:,} ₸\n".replace(",", " ")
         text += f"   {E.ID} ID: <code>{html.escape(str(b['id']))}</code>\n\n"
-    
+
     text += f"{E.POINT_DOWN} Выберите запись для подробностей:"
-    
+
     await callback.message.edit_text(text, reply_markup=keyboards.bookings_list_kb(bookings), parse_mode="HTML")
     await callback.answer()
 
@@ -208,17 +195,18 @@ async def cb_my_bookings(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("booking_detail:"))
 async def cb_booking_detail(callback: CallbackQuery):
     booking_id = callback.data.split(":", 1)[1]
-    
+
     # Получаем информацию о записи
     bookings = await storage.get_user_bookings(callback.from_user.id)
-    booking = next((b for b in bookings if b['id'] == booking_id), None)
-    
+    booking = next((b for b in bookings if b["id"] == booking_id), None)
+
     if not booking:
         from emoji_config import P
+
         await callback.answer(f"{P.CROSS} Запись не найдена", show_alert=True)
         return
-    
-    date_str = keyboards._format_date(booking['date'])
+
+    date_str = keyboards._format_date(booking["date"])
     text = f"{E.LIST} <b>Детали записи</b>\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
@@ -228,7 +216,7 @@ async def cb_booking_detail(callback: CallbackQuery):
     text += f"{E.MONEY} <b>Цена:</b> {booking['price']:,} ₸\n".replace(",", " ")
     text += f"{E.ID} <b>ID:</b> <code>{html.escape(str(booking['id']))}</code>\n\n"
     text += f"{E.WARNING} Хотите отменить эту запись?"
-    
+
     await callback.message.edit_text(text, reply_markup=keyboards.booking_detail_kb(booking_id), parse_mode="HTML")
     await callback.answer()
 
@@ -240,16 +228,17 @@ async def cb_cancel_book(callback: CallbackQuery):
     """
     booking_id = callback.data.split(":", 1)[1]
     bookings = await storage.get_user_bookings(callback.from_user.id)
-    booking = next((b for b in bookings if b['id'] == booking_id), None)
+    booking = next((b for b in bookings if b["id"] == booking_id), None)
 
     if not booking:
         from emoji_config import P
+
         await callback.answer(f"{P.CROSS} Запись не найдена", show_alert=True)
         return
 
-    date_str = keyboards._format_date(booking['date'])
+    date_str = keyboards._format_date(booking["date"])
     text = f"{E.WARNING} <b>Подтвердите отмену</b>\n\n"
-    text += f"Вы действительно хотите отменить запись?\n\n"
+    text += "Вы действительно хотите отменить запись?\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
     # CRIT-3 FIX: cb_cancel_book is a duplicate of cb_ask_cancel (same prefix
@@ -272,16 +261,17 @@ async def cb_ask_cancel(callback: CallbackQuery):
     # TASK-06: Show warning before cancellation
     booking_id = callback.data.split(":", 1)[1]
     bookings = await storage.get_user_bookings(callback.from_user.id)
-    booking = next((b for b in bookings if b['id'] == booking_id), None)
-    
+    booking = next((b for b in bookings if b["id"] == booking_id), None)
+
     if not booking:
         from emoji_config import P
+
         await callback.answer(f"{P.CROSS} Запись не найдена", show_alert=True)
         return
-    
-    date_str = keyboards._format_date(booking['date'])
+
+    date_str = keyboards._format_date(booking["date"])
     text = f"{E.WARNING} <b>Подтвердите отмену</b>\n\n"
-    text += f"Вы действительно хотите отменить запись?\n\n"
+    text += "Вы действительно хотите отменить запись?\n\n"
     text += f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
     text += f"{E.CLOCK} <b>Время:</b> {booking['time']}\n"
     # CRIT-3 FIX (same class): escape master/service in this confirmation flow too.
@@ -297,33 +287,33 @@ async def cb_ask_cancel(callback: CallbackQuery):
 async def cb_confirm_cancel(callback: CallbackQuery):
     booking_id = callback.data.split(":", 1)[1]
     booking = await storage.cancel_booking(booking_id, telegram_id=callback.from_user.id)
-    
+
     # BUG-005 FIX: Removed duplicate callback.answer() at the end
     if booking:
         await scheduler.cancel_reminders(booking_id)
-        date_str = keyboards._format_date(booking['date'])
+        date_str = keyboards._format_date(booking["date"])
         text = f"{E.CHECK} <b>Запись отменена!</b>\n\n"
         text += f"{E.CALENDAR} {date_str} в {booking['time']}\n"
         # CRIT-3 FIX (same class): escape in cancellation success message too.
         text += f"{E.MASTER} Мастер: {html.escape(str(booking['master']))}\n"
         text += f"{E.BARBER} Услуга: {html.escape(str(booking['service']))}\n\n"
         text += f"{E.IDEA} Вы можете записаться снова в любое время!"
-        
+
         await callback.message.edit_text(text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
         await callback.answer()  # Single answer here
-        
+
         # Уведомляем мастера и администраторов об отмене
         bot = callback.bot
-        
+
         # BUG-019: Add html.escape and parse_mode for admin notifications
         cancel_text = f"{E.CROSS} <b>Отмена записи</b>\n\n"
         cancel_text += f"{E.USER} Клиент: {html.escape(booking['name'])}\n"
         cancel_text += f"{E.CALENDAR} {date_str} в {booking['time']}\n"
         cancel_text += f"{E.MASTER} Мастер: {html.escape(booking['master'])}\n"
         cancel_text += f"{E.BARBER} Услуга: {html.escape(booking['service'])}"
-        
+
         await notify_admins(bot, cancel_text)
-        
+
         # Проверяем лист ожидания
         waitlist = await storage.get_waitlist_for_slot(booking["date"], booking["time"], booking["master"])
         for wl in waitlist:
@@ -339,6 +329,7 @@ async def cb_confirm_cancel(callback: CallbackQuery):
                 logger.error(f"Failed to notify waitlist {wl['telegram_id']}: {e}")
     else:
         from emoji_config import P
+
         await callback.answer(f"{P.CROSS} Запись не найдена или уже отменена", show_alert=True)
 
 
@@ -350,7 +341,7 @@ async def cmd_me(message: Message):
         return
 
     bookings = await storage.get_user_bookings(message.from_user.id)
-    
+
     text = f"{E.USER} <b>Ваш профиль</b>\n\n"
     # CRIT-3 FIX (same class): first_name is Telegram-controlled but visible
     # in HTML — escape to defang XSS in case Telegram ever lets it through.
@@ -363,9 +354,9 @@ async def cmd_me(message: Message):
         text += f"{E.STAR} <b>Программа лояльности:</b>\n"
         text += f"   • Визитов: {loyalty['visits']}\n"
         text += f"   • Бонусов: {loyalty['bonuses']}\n"
-        
+
         # TASK-07: Show referral code and link
-        if loyalty.get('ref_code'):
+        if loyalty.get("ref_code"):
             bot_username = (await message.bot.get_me()).username
             ref_link = f"https://t.me/{bot_username}?start=ref_{loyalty['ref_code']}"
             text += f"\n{E.LINK} <b>Реферальная ссылка:</b>\n"
@@ -374,18 +365,20 @@ async def cmd_me(message: Message):
             text += f"За каждого нового пользователя вы получите {config.REFERRAL_BONUS} бонусов.\n\n"
     else:
         text += f"{E.STAR} <b>Программа лояльности:</b>\n"
-        text += f"   • Визитов: 0\n"
-        text += f"   • Бонусов: 0\n\n"
+        text += "   • Визитов: 0\n"
+        text += "   • Бонусов: 0\n\n"
 
     if bookings:
         text += f"{E.LIST} <b>Активные записи:</b>\n\n"
         for b in bookings:
-            date_str = keyboards._format_date(b['date'])
+            date_str = keyboards._format_date(b["date"])
             text += f"• {date_str} в {b['time']}\n"
             # CRIT-3 FIX (same class): escape master/service here too.
             text += f"  {E.MASTER} {html.escape(str(b['master']))} — {html.escape(str(b['service']))}\n\n"
 
-    await send_with_retry(message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML"
+    )
 
 
 @router.message(Command("master"))
@@ -445,52 +438,46 @@ async def cmd_help(message: Message):
         ]
 
     text = "\n".join(lines)
-    await send_with_retry(message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML"
+    )
 
 
 @router.message(Command("waitlist"))
 async def cmd_waitlist(message: Message):
     """BUG-021: Show user's waitlist entries"""
     telegram_id = message.from_user.id
-    
+
     try:
         # FIX: Use SQL query instead of Python filtering
         user_waitlist = await storage.get_user_waitlist(telegram_id)
-        
+
         if not user_waitlist:
             await send_with_retry(
-                message.bot, message.chat.id,
+                message.bot,
+                message.chat.id,
                 f"{E.EMPTY} <b>У вас нет записей в листе ожидания</b>\n\n"
                 f"Когда вы встанете в лист ожидания на занятое время, они появятся здесь.",
                 reply_markup=keyboards.back_to_main_kb(),
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             return
-        
+
         text = f"{E.RELOAD} <b>Ваш лист ожидания:</b>\n\n"
         for i, w in enumerate(user_waitlist, 1):
-            date_str = keyboards._format_date(w['date'])
+            date_str = keyboards._format_date(w["date"])
             text += f"<b>{i}. {date_str} в {w['time']}</b>\n"
             text += f"   {E.MASTER} Мастер: {html.escape(w['master'])}\n"
             text += f"   {E.BARBER} Услуга: {html.escape(w['service'])}\n\n"
-        
+
         text += f"{E.INFO} Мы уведомим вас, когда время освободится!"
-        
+
         await send_with_retry(
-            message.bot, message.chat.id,
-            text,
-            reply_markup=keyboards.back_to_main_kb(),
-            parse_mode="HTML"
+            message.bot, message.chat.id, text, reply_markup=keyboards.back_to_main_kb(), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in cmd_waitlist: {e}")
-        await send_with_retry(
-            message.bot, message.chat.id,
-            messages.ERROR,
-            parse_mode="HTML"
-        )
-
-
+        await send_with_retry(message.bot, message.chat.id, messages.ERROR, parse_mode="HTML")
 
 
 @router.callback_query(F.data == "invite_friend")
@@ -527,20 +514,21 @@ async def cb_invite_friend(callback: CallbackQuery):
             link=ref_link,
         )
 
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="Поделиться ссылкой",
-                switch_inline_query=share_text[:512],
-            )],
-            [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
-        ])
+        from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-        await edit_with_retry(
-            callback.message, text,
-            reply_markup=kb,
-            parse_mode="HTML"
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="Поделиться ссылкой",
+                        switch_inline_query=share_text[:512],
+                    )
+                ],
+                [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
+            ]
         )
+
+        await edit_with_retry(callback.message, text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error in cb_invite_friend: {e}")
         # P2 FIX: only answer on error path; the success path answers below once
@@ -565,10 +553,11 @@ async def cmd_cancel_universal(message: Message, state: FSMContext):
                 pass
         await state.clear()
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             f"{E.CHECK} <b>Действие отменено</b>\n\nВозвращаемся в главное меню.",
             reply_markup=keyboards.back_to_main_kb(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -581,16 +570,17 @@ async def cmd_cancel_universal(message: Message, state: FSMContext):
         # UX-FIX: /cancel BOOKING_ID now shows confirmation instead of instant delete
         booking_id = parts[1].strip()
         bookings = await storage.get_user_bookings(message.from_user.id)
-        booking = next((b for b in bookings if b['id'] == booking_id), None)
+        booking = next((b for b in bookings if b["id"] == booking_id), None)
         if not booking:
             await send_with_retry(
-                message.bot, message.chat.id,
+                message.bot,
+                message.chat.id,
                 f"{E.CROSS} <b>Запись не найдена</b>\n\nВозможно, она уже отменена.",
                 reply_markup=keyboards.back_to_main_kb(),
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             return
-        date_str = keyboards._format_date(booking['date'])
+        date_str = keyboards._format_date(booking["date"])
         confirm_text = (
             f"{E.WARNING} <b>Подтвердите отмену</b>\n\n"
             f"{E.CALENDAR} <b>Дата:</b> {date_str}\n"
@@ -600,10 +590,11 @@ async def cmd_cancel_universal(message: Message, state: FSMContext):
             f"{E.IDEA} <b>Это действие нельзя отменить!</b>"
         )
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             confirm_text,
             reply_markup=keyboards.confirm_cancel_kb(booking_id),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
@@ -611,21 +602,19 @@ async def cmd_cancel_universal(message: Message, state: FSMContext):
     bookings = await storage.get_user_bookings(message.from_user.id)
     if not bookings:
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             f"{E.INFO} <b>Нет активных записей</b>\n\nЗапишитесь через главное меню!",
             reply_markup=keyboards.back_to_main_kb(),
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
         return
 
     text = f"{E.LIST} <b>Выберите запись для отмены:</b>\n\n"
     for b in bookings:
-        date_str = keyboards._format_date(b['date'])
+        date_str = keyboards._format_date(b["date"])
         text += f"{E.CALENDAR} <b>{date_str}</b> в {b['time']} — {html.escape(b['master'])}\n"
 
     await send_with_retry(
-        message.bot, message.chat.id,
-        text,
-        reply_markup=keyboards.cancel_bookings_kb(bookings),
-        parse_mode="HTML"
+        message.bot, message.chat.id, text, reply_markup=keyboards.cancel_bookings_kb(bookings), parse_mode="HTML"
     )

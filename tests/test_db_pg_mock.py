@@ -1,8 +1,11 @@
-import sys, pathlib
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 class TestDBConnPGMethods:
@@ -10,6 +13,7 @@ class TestDBConnPGMethods:
 
     async def test_fetch_pg_path(self):
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[MagicMock(items=lambda: [("val", 1)])])
         # Use a real dict row mock
@@ -25,6 +29,7 @@ class TestDBConnPGMethods:
 
     async def test_fetchrow_pg_returns_none(self):
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.fetchrow = AsyncMock(return_value=None)
         conn = dbmod.DBConn(mock_conn, True)
@@ -33,6 +38,7 @@ class TestDBConnPGMethods:
 
     async def test_fetchrow_pg_returns_row(self):
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_row = MagicMock()
         mock_row.items = MagicMock(return_value=[("id", "x"), ("name", "Test")])
@@ -43,6 +49,7 @@ class TestDBConnPGMethods:
 
     async def test_fetchval_pg(self):
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.fetchval = AsyncMock(return_value=42)
         conn = dbmod.DBConn(mock_conn, True)
@@ -52,6 +59,7 @@ class TestDBConnPGMethods:
     async def test_execute_pg_insert_or_ignore(self):
         """Lines 85-89: INSERT OR IGNORE -> INSERT INTO ... ON CONFLICT DO NOTHING"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         conn = dbmod.DBConn(mock_conn, True)
@@ -63,6 +71,7 @@ class TestDBConnPGMethods:
     async def test_execute_pg_regular_insert(self):
         """Regular INSERT without OR IGNORE"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         conn = dbmod.DBConn(mock_conn, True)
@@ -73,6 +82,7 @@ class TestDBConnPGMethods:
     async def test_execute_count_pg(self):
         """Lines 100-104: execute_count for PostgreSQL"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock(return_value="DELETE 3")
         conn = dbmod.DBConn(mock_conn, True)
@@ -82,6 +92,7 @@ class TestDBConnPGMethods:
     async def test_execute_count_pg_parse_error(self):
         """execute_count returns 0 on parse failure"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock(return_value="UNKNOWN")
         conn = dbmod.DBConn(mock_conn, True)
@@ -91,14 +102,11 @@ class TestDBConnPGMethods:
     async def test_upsert_pg(self):
         """Lines 117-127: upsert for PostgreSQL"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         conn = dbmod.DBConn(mock_conn, True)
-        await conn.upsert(
-            "users",
-            ["telegram_id"],
-            {"telegram_id": 1, "first_name": "Test", "username": "t"}
-        )
+        await conn.upsert("users", ["telegram_id"], {"telegram_id": 1, "first_name": "Test", "username": "t"})
         mock_conn.execute.assert_called_once()
         sql = mock_conn.execute.call_args[0][0]
         assert "ON CONFLICT" in sql
@@ -107,6 +115,7 @@ class TestDBConnPGMethods:
     async def test_upsert_pg_only_conflict_cols(self):
         """upsert with all cols as conflict cols -> DO NOTHING"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_conn.execute = AsyncMock()
         conn = dbmod.DBConn(mock_conn, True)
@@ -117,6 +126,7 @@ class TestDBConnPGMethods:
     async def test_transaction_pg(self):
         """Lines 138-139: transaction for PostgreSQL"""
         import db as dbmod
+
         mock_conn = AsyncMock()
         mock_txn = AsyncMock()
         mock_conn.transaction = MagicMock(return_value=mock_txn)
@@ -129,6 +139,7 @@ class TestDBConnPGMethods:
     async def test_acquire_pg_path(self):
         """Lines 154-155: acquire() uses PG pool when _use_pg=True"""
         import db as dbmod
+
         mock_pool = AsyncMock()
         mock_raw = AsyncMock()
         mock_pool.acquire = MagicMock()
@@ -150,9 +161,12 @@ class TestDBConnPGMethods:
     async def test_init_pool_pg(self):
         """Lines 13-19: init_pool with DATABASE_URL uses asyncpg"""
         import db as dbmod
+
         mock_pool = AsyncMock()
-        with patch.dict("os.environ", {"DATABASE_URL": "postgresql://user:pass@localhost/db"}), \
-             patch("asyncpg.create_pool", new_callable=AsyncMock, return_value=mock_pool):
+        with (
+            patch.dict("os.environ", {"DATABASE_URL": "postgresql://user:pass@localhost/db"}),
+            patch("asyncpg.create_pool", new_callable=AsyncMock, return_value=mock_pool),
+        ):
             await dbmod.init_pool()
             assert dbmod._use_pg is True
             assert dbmod._pool is mock_pool
@@ -163,6 +177,7 @@ class TestDBConnPGMethods:
     async def test_close_pool_none(self):
         """Lines 27-28: close_pool does nothing if _pool is None"""
         import db as dbmod
+
         original = dbmod._pool
         dbmod._pool = None
         await dbmod.close_pool()

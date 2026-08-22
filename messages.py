@@ -1,4 +1,5 @@
 import html as html_module
+
 from emoji_config import E, P
 
 
@@ -17,10 +18,8 @@ MAIN_MENU_TEXT = f"{E.HOME} <b>Главное меню</b>\n\nВыберите �
 
 # ===== ЗАПИСЬ =====
 
-CHOOSE_MASTER = (
-    f"{E.BARBER} <b>Шаг 1 из 5 — Выбор мастера</b>\n\n"
-    "Выберите мастера:"
-)
+CHOOSE_MASTER = f"{E.BARBER} <b>Шаг 1 из 5 — Выбор мастера</b>\n\nВыберите мастера:"
+
 
 def master_selected(master_name: str, experience: str, specialization: str) -> str:
     """Сообщение после выбора мастера"""
@@ -32,10 +31,9 @@ def master_selected(master_name: str, experience: str, specialization: str) -> s
         "Выберите услугу:"
     )
 
-CHOOSE_SERVICE = (
-    f"{E.LIST} <b>Шаг 2 из 5 — Выбор услуги</b>\n\n"
-    "Выберите услугу:"
-)
+
+CHOOSE_SERVICE = f"{E.LIST} <b>Шаг 2 из 5 — Выбор услуги</b>\n\nВыберите услугу:"
+
 
 def service_selected(service_name: str, price: int) -> str:
     """Сообщение после выбора услуги"""
@@ -46,10 +44,9 @@ def service_selected(service_name: str, price: int) -> str:
         "Выберите удобный день:"
     )
 
-CHOOSE_DATE = (
-    f"{E.CALENDAR} <b>Шаг 3 из 5 — Дата</b>\n\n"
-    "Выберите удобный день:"
-)
+
+CHOOSE_DATE = f"{E.CALENDAR} <b>Шаг 3 из 5 — Дата</b>\n\nВыберите удобный день:"
+
 
 def date_selected(date_formatted: str) -> str:
     """Сообщение после выбора даты"""
@@ -59,15 +56,10 @@ def date_selected(date_formatted: str) -> str:
         "Выберите свободный слот:"
     )
 
-CHOOSE_TIME = (
-    f"{E.CLOCK} <b>Шаг 4 из 5 — Время</b>\n\n"
-    "Выберите свободный слот:"
-)
 
-ENTER_NAME = (
-    f"{E.USER} <b>Шаг 5 из 5 — Ваше имя</b>\n\n"
-    "Как к вам обращаться?"
-)
+CHOOSE_TIME = f"{E.CLOCK} <b>Шаг 4 из 5 — Время</b>\n\nВыберите свободный слот:"
+
+ENTER_NAME = f"{E.USER} <b>Шаг 5 из 5 — Ваше имя</b>\n\nКак к вам обращаться?"
 
 BOOKING_CONFIRM = (
     f"{E.LIST} <b>Подтверждение записи</b>\n\n"
@@ -93,33 +85,27 @@ BOOKING_CONFIRMED = (
     f"{E.INFO} <i>Бонус лояльности засчитывается после завершения визита.</i>"
 )
 
-BOOKING_CANCELLED = (
-    f"{E.CROSS} <b>Запись отменена</b>\n\n"
-    "Будем рады видеть вас снова — записывайтесь в любое время."
-)
+BOOKING_CANCELLED = f"{E.CROSS} <b>Запись отменена</b>\n\nБудем рады видеть вас снова — записывайтесь в любое время."
 
-SLOT_BUSY = (
-    f"{E.EXCLAMATION} Это время уже занято.\n\n"
-    "Выберите другой слот или встаньте в лист ожидания."
-)
+SLOT_BUSY = f"{E.EXCLAMATION} Это время уже занято.\n\nВыберите другой слот или встаньте в лист ожидания."
 
-RATE_LIMIT = (
-    f"{E.EXCLAMATION} <b>Превышен лимит попыток.</b>\n\n"
-    "Попробуйте через 30 минут."
-)
+RATE_LIMIT = f"{E.EXCLAMATION} <b>Превышен лимит попыток.</b>\n\nПопробуйте через 30 минут."
+
 
 # BUG-S6 FIX: dynamic limit from config
 def max_bookings_reached_text() -> str:
     import config as _cfg
+
     return (
         f"{E.EXCLAMATION} <b>У вас уже {_cfg.MAX_ACTIVE_BOOKINGS} активных записей (максимум).</b>\n\n"
         "Просмотреть записи — «Мои записи».\n"
         "Отменить — нажмите «Мои записи» → выберите запись → «Отменить запись»."
     )
 
+
 ONE_ACTIVE_BOOKING = max_bookings_reached_text()
 
-NO_ACTIVE_BOOKING ="У вас нет активных записей."
+NO_ACTIVE_BOOKING = "У вас нет активных записей."
 
 MASTER_INFO = (
     f"{E.SCISSORS} <b>Мастер: {{name}}</b>\n\n"
@@ -192,15 +178,9 @@ WAITLIST_ADDED = (
     "Уведомим, если время освободится."
 )
 
-ERROR = (
-    f"{E.CROSS} Что-то пошло не так.\n"
-    f"{E.RELOAD} Попробуйте ещё раз или обратитесь к администратору."
-)
+ERROR = f"{E.CROSS} Что-то пошло не так.\n{E.RELOAD} Попробуйте ещё раз или обратитесь к администратору."
 
-CANCELLED_SUCCESS = (
-    f"{E.CHECK} <b>Запись отменена</b>\n\n"
-    f"{E.ID} ID: <code>{{booking_id}}</code>"
-)
+CANCELLED_SUCCESS = f"{E.CHECK} <b>Запись отменена</b>\n\n{E.ID} ID: <code>{{booking_id}}</code>"
 
 # ===== АДМИН =====
 
@@ -214,11 +194,7 @@ ADMIN_BOOKING_NOTIFY = (
     f"{E.MONEY} <b>Стоимость:</b> {{price:,}} ₸".replace(",", " ")
 )
 
-ADMIN_CANCEL_NOTIFY = (
-    f"{E.CROSS} <b>Отмена записи</b>\n\n"
-    f"{E.ID} ID: <code>{{booking_id}}</code>\n"
-    "Отменена клиентом."
-)
+ADMIN_CANCEL_NOTIFY = f"{E.CROSS} <b>Отмена записи</b>\n\n{E.ID} ID: <code>{{booking_id}}</code>\nОтменена клиентом."
 
 ADMIN_STATS = (
     f"{E.CHART} <b>Статистика</b>\n\n"
@@ -233,19 +209,35 @@ ADMIN_EXPORT = f"{E.CHECK} Экспорт завершён. Файл: <code>{{fi
 # BUG-F FIX: Use plain emoji for show_alert contexts
 ADMIN_ONLY = "🔒 Команда доступна только администратору."
 
+
 def get_about_text() -> str:
     import config as _cfg
+
     return (
         f"{E.BARBER} <b>{_cfg.BARBERSHOP_NAME}</b>\n\n"
         f"{E.LOCATION} {_cfg.BARBERSHOP_ADDRESS}\n"
         f"{E.PHONE} {_cfg.BARBERSHOP_PHONE}\n"
         f"{E.CLOCK} {_cfg.BARBERSHOP_WORKING_HOURS}"
     )
+
+
 # BUG-S5 FIX: ABOUT removed. Always call messages.get_about_text() for live config.
 
 WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
-          "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+MONTHS = [
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+]
 
 # ===== АДМИН CMS (plain text) =====
 ADMIN_MASTER_LIST = "Мастера:\n\n{masters}"
@@ -254,7 +246,9 @@ ADMIN_MASTER_REMOVED = "Мастер {name} удалён."
 ADMIN_MASTER_UPDATED = "Мастер {name} обновлён."
 ADMIN_MASTER_NOT_FOUND = "Мастер {name} не найден."
 ADMIN_ADD_MASTER_PROMPT = "Добавление мастера\n\nФормат: Имя, опыт, специализация\nПример: Иван, 5 лет, мужские стрижки"
-ADMIN_EDIT_MASTER_PROMPT = "Редактирование мастера\n\nФормат: Имя, опыт, специализация\nПример: Иван, 6 лет, стрижки, бритьё"
+ADMIN_EDIT_MASTER_PROMPT = (
+    "Редактирование мастера\n\nФормат: Имя, опыт, специализация\nПример: Иван, 6 лет, стрижки, бритьё"
+)
 ADMIN_REMOVE_MASTER_PROMPT = "Выберите мастера для удаления:"
 ADMIN_SERVICE_LIST = "Услуги:\n\n{services}"
 ADMIN_SERVICE_ADDED = "Услуга {name} добавлена ({price} ₸)."

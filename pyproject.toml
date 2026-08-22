@@ -71,6 +71,12 @@ ignore = [
   "E501",  # line length handled by formatter
   "B008",  # do not perform function calls in argument defaults
   "UP007", # keep compatibility annotations usable on 3.10
+  # This is a Russian-language Telegram bot: Cyrillic letters (е с р В о …) that
+  # resemble Latin ones are legitimate UI/comment text, not typos. The homoglyph
+  # rules produce ~268 false positives across the codebase, so they are disabled.
+  "RUF001", # ambiguous-unicode-character-string
+  "RUF002", # ambiguous-unicode-character-docstring
+  "RUF003", # ambiguous-unicode-character-comment
 ]
 
 [tool.ruff.lint.per-file-ignores]

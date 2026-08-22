@@ -1,0 +1,39 @@
+backup.py:100:49: PIE810 Call `endswith` once with a `tuple`
+bot.py:170:31: N817 CamelCase `CallbackQuery` imported as acronym `CQ`
+bot.py:251:22: RUF005 Consider iterable unpacking instead of concatenation
+bot.py:344:65: B023 Function definition does not bind loop variable `_sig`
+config.py:9:1: E402 Module level import not at top of file
+emoji_config.py:82:5: F601 Dictionary key literal `"👨‍🎨"` repeated
+fsm_storage.py:10:1: E402 Module level import not at top of file
+fsm_storage.py:12:1: E402 Module level import not at top of file
+fsm_storage.py:29:18: E701 Multiple statements on one line (colon)
+fsm_storage.py:43:43: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+fsm_storage.py:53:33: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+fsm_storage.py:109:20: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+fsm_storage.py:109:54: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+fsm_storage.py:112:22: ASYNC230 Async functions should not open files with blocking methods like `open`
+handlers\admin.py:153:5: N806 Variable `PAGE` in function should be lowercase
+handlers\admin.py:227:23: ASYNC240 Async functions should not use pathlib.Path methods, use trio.Path or anyio.path
+handlers\admin.py:245:14: ASYNC230 Async functions should not open files with blocking methods like `open`
+handlers\admin.py:280:25: ASYNC240 Async functions should not use pathlib.Path methods, use trio.Path or anyio.path
+handlers\admin.py:282:17: ASYNC240 Async functions should not use pathlib.Path methods, use trio.Path or anyio.path
+handlers\admin.py:968:5: N806 Variable `PAGE` in function should be lowercase
+handlers\admin.py:1010:5: N806 Variable `PAGE` in function should be lowercase
+handlers\admin.py:1047:13: E741 Ambiguous variable name: `l`
+handlers\booking.py:52:31: N814 Camelcase `CallbackQuery` imported as constant `_CQ`
+handlers\booking.py:431:5: N806 Variable `MAX_DAYS_AHEAD` in function should be lowercase
+handlers\booking.py:440:20: E701 Multiple statements on one line (colon)
+handlers\booking.py:562:20: E701 Multiple statements on one line (colon)
+handlers\booking.py:623:20: E701 Multiple statements on one line (colon)
+handlers\booking.py:695:20: E701 Multiple statements on one line (colon)
+keyboards.py:111:23: B007 Loop control variable `status` not used within loop body
+keyboards.py:135:36: RUF013 PEP 484 prohibits implicit `Optional`
+monitoring.py:63:22: ASYNC230 Async functions should not open files with blocking methods like `open`
+storage.py:475:56: RUF013 PEP 484 prohibits implicit `Optional`
+tests\test_backup_gzip.py:108:16: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+tests\test_db_coverage.py:115:16: E712 Avoid equality comparisons to `False`; use `not dbmod.is_postgres():` for false checks
+tests\test_extra_coverage.py:128:9: N802 Function name `test_class_P_has_attributes` should be lowercase
+tests\test_extra_coverage.py:159:16: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+tests\test_extra_coverage.py:178:16: ASYNC240 Async functions should not use os.path methods, use trio.Path or anyio.path
+tests\test_monitoring.py:91:21: E702 Multiple statements on one line (semicolon)
+tests\test_monitoring.py:98:21: E702 Multiple statements on one line (semicolon)

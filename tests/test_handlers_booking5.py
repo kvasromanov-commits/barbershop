@@ -1,13 +1,18 @@
-import sys, pathlib
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from tests.helpers import make_callback, make_message, make_fsm, SAMPLE_BOOKING
+
+import pytest
+
+from tests.helpers import SAMPLE_BOOKING, make_callback, make_fsm, make_message
 
 
 def setup_booking_config():
     import config
+
     config.MASTERS = {"Alibek": {"experience": "5 years", "specialization": "cuts"}}
     config.SERVICES = {"Haircut": 3000}
     config.ADMIN_IDS = {100}
@@ -23,6 +28,7 @@ class TestSafeEdit:
 
     async def test_safe_edit_fallback_on_other_error(self):
         import handlers.booking as bk
+
         setup_booking_config()
         msg = MagicMock()
         msg.edit_text = AsyncMock(side_effect=Exception("some other error"))
@@ -32,6 +38,7 @@ class TestSafeEdit:
 
     async def test_safe_edit_ignores_not_modified(self):
         import handlers.booking as bk
+
         setup_booking_config()
         msg = MagicMock()
         msg.edit_text = AsyncMock(side_effect=Exception("message is not modified"))
@@ -44,10 +51,13 @@ class TestGetSlots:
     """Lines 149-158: time filter for today's slots."""
 
     async def test_slots_today_future_slot(self):
-        import handlers.booking as bk, config
+        import config
+        import handlers.booking as bk
+
         setup_booking_config()
         config.MIN_BOOKING_ADVANCE_MINUTES = 0
-        from datetime import datetime, date
+        from datetime import date, datetime
+
         today = datetime.now().strftime("%Y-%m-%d")
         # Patch get_now to return midnight so all slots are in the future
         fake_now = datetime.now().replace(hour=0, minute=0)
@@ -57,10 +67,13 @@ class TestGetSlots:
         assert any(v == "free" for v in slots.values())
 
     async def test_slots_today_past_slot_filtered(self):
-        import handlers.booking as bk, config
+        import config
+        import handlers.booking as bk
+
         setup_booking_config()
         config.MIN_BOOKING_ADVANCE_MINUTES = 24 * 60  # 24h — all slots are too soon
         from datetime import datetime
+
         today = datetime.now().strftime("%Y-%m-%d")
         fake_now = datetime.now().replace(hour=0, minute=0)
         with patch("handlers.booking.get_now", return_value=fake_now):
@@ -75,7 +88,9 @@ class TestCbBookFallbacks:
     """Lines 183-184, 203-204, 222-223: edit_text exception fallbacks in cb_book."""
 
     async def test_book_no_phone_edit_exception(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="book", user_id=222)
@@ -87,7 +102,9 @@ class TestCbBookFallbacks:
         cb.message.answer.assert_called()
 
     async def test_book_has_active_edit_exception(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="book", user_id=111)
@@ -100,7 +117,9 @@ class TestCbBookFallbacks:
         cb.message.answer.assert_called()
 
     async def test_book_rate_limited_edit_exception(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="book", user_id=111)
@@ -118,13 +137,15 @@ class TestChooseServiceEdge:
     """Line 305: price fallback when master is empty."""
 
     async def test_service_empty_master(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="service:Haircut", user_id=111)
         # master is empty in FSM data
         fsm = make_fsm(data={"master": ""})
-        with patch("storage.get_master_work_days", AsyncMock(return_value=[1,2,3,4,5,6])):
+        with patch("storage.get_master_work_days", AsyncMock(return_value=[1, 2, 3, 4, 5, 6])):
             await bk.cb_choose_service(cb, fsm)
         fsm.set_state.assert_called()
 
@@ -135,6 +156,7 @@ class TestCbChooseDateEdge:
     async def test_invalid_date_format(self):
         import handlers.booking as bk
         from handlers.booking import BookingStates
+
         setup_booking_config()
         cb = make_callback(data="date:not-a-date", user_id=111)
         fsm = make_fsm(state=BookingStates.choose_date.state)
@@ -142,9 +164,12 @@ class TestCbChooseDateEdge:
         cb.answer.assert_called()
 
     async def test_date_slots_exception(self, db):
-        import handlers.booking as bk, storage
-        from handlers.booking import BookingStates
         from datetime import datetime, timedelta
+
+        import handlers.booking as bk
+        import storage
+        from handlers.booking import BookingStates
+
         setup_booking_config()
         await storage.init_db()
         tomorrow = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -161,42 +186,42 @@ class TestCbChooseTime:
     """Lines 408-431: slot None / busy; 435-436: time not in list."""
 
     async def test_slot_none(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
         from handlers.booking import BookingStates
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="time:10:00", user_id=111)
-        fsm = make_fsm(state=BookingStates.choose_time.state,
-                       data={"date": "2026-12-10", "master": "Alibek"})
+        fsm = make_fsm(state=BookingStates.choose_time.state, data={"date": "2026-12-10", "master": "Alibek"})
         # slot is missing from dict — returns None
-        with patch("handlers.booking._get_available_slots",
-                   AsyncMock(return_value={"11:00": "free"})):
+        with patch("handlers.booking._get_available_slots", AsyncMock(return_value={"11:00": "free"})):
             await bk.cb_choose_time(cb, fsm)
         cb.answer.assert_called()
 
     async def test_slot_busy(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
         from handlers.booking import BookingStates
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="time:10:00", user_id=111)
-        fsm = make_fsm(state=BookingStates.choose_time.state,
-                       data={"date": "2026-12-10", "master": "Alibek"})
-        with patch("handlers.booking._get_available_slots",
-                   AsyncMock(return_value={"10:00": "busy"})):
+        fsm = make_fsm(state=BookingStates.choose_time.state, data={"date": "2026-12-10", "master": "Alibek"})
+        with patch("handlers.booking._get_available_slots", AsyncMock(return_value={"10:00": "busy"})):
             await bk.cb_choose_time(cb, fsm)
         cb.answer.assert_called()
 
     async def test_time_not_in_generated(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
         from handlers.booking import BookingStates
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="time:99:99", user_id=111)
-        fsm = make_fsm(state=BookingStates.choose_time.state,
-                       data={"date": "2026-12-10", "master": "Alibek"})
-        with patch("handlers.booking._get_available_slots",
-                   AsyncMock(side_effect=Exception("fail"))):
+        fsm = make_fsm(state=BookingStates.choose_time.state, data={"date": "2026-12-10", "master": "Alibek"})
+        with patch("handlers.booking._get_available_slots", AsyncMock(side_effect=Exception("fail"))):
             await bk.cb_choose_time(cb, fsm)
         cb.answer.assert_called()
 
@@ -205,12 +230,15 @@ class TestHandleEnterNameEdge:
     """Lines 496-501: save_booking exception; 513-520: save_booking returns None."""
 
     async def test_save_booking_save_exception_in_name(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         msg = make_message(text="Alex", user_id=111)
-        fsm = make_fsm(data={"date": "2026-12-10", "time": "10:00",
-                             "master": "Alibek", "service": "Haircut", "price": 3000})
+        fsm = make_fsm(
+            data={"date": "2026-12-10", "time": "10:00", "master": "Alibek", "service": "Haircut", "price": 3000}
+        )
         with patch("storage.save_booking", AsyncMock(side_effect=Exception("fail"))):
             await bk.handle_enter_name(msg, fsm)
         msg.answer.assert_called()
@@ -220,15 +248,18 @@ class TestBackToTime:
     """Lines 538-539: back_to_time releases slot lock."""
 
     async def test_back_to_time_releases_lock(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
         from handlers.booking import BookingStates
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="back_to_time", user_id=111)
         fsm = make_fsm(data={"date": "2026-12-10", "time": "10:00", "master": "Alibek"})
         with patch("storage.release_slot_lock", AsyncMock()) as mock_release:
-            with patch("handlers.booking._get_available_slots",
-                       AsyncMock(return_value={"10:00": "free", "11:00": "busy"})):
+            with patch(
+                "handlers.booking._get_available_slots", AsyncMock(return_value={"10:00": "free", "11:00": "busy"})
+            ):
                 await bk.cb_back_to_time(cb, fsm)
         mock_release.assert_called_once()
         cb.answer.assert_called()
@@ -238,14 +269,17 @@ class TestBackToDateWithService:
     """Line 737: back_to_date shows service info when service is in FSM."""
 
     async def test_back_to_date_with_service(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="back_to_date", user_id=111)
-        fsm = make_fsm(data={"master": "Alibek", "service": "Haircut", "price": 3000,
-                             "date": "2026-12-10", "time": "10:00"})
+        fsm = make_fsm(
+            data={"master": "Alibek", "service": "Haircut", "price": 3000, "date": "2026-12-10", "time": "10:00"}
+        )
         with patch("storage.release_slot_lock", AsyncMock()):
-            with patch("storage.get_master_work_days", AsyncMock(return_value=[1,2,3,4,5,6])):
+            with patch("storage.get_master_work_days", AsyncMock(return_value=[1, 2, 3, 4, 5, 6])):
                 await bk.cb_back_to_date(cb, fsm)
         cb.answer.assert_called()
 
@@ -254,7 +288,9 @@ class TestRemindConfirmEdge:
     """Lines 821-822: booking is None; 832-833: edit exception."""
 
     async def test_remind_confirm_booking_none(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="remind_confirm:nonexistent", user_id=111)
@@ -264,7 +300,9 @@ class TestRemindConfirmEdge:
         cb.answer.assert_called()
 
     async def test_remind_confirm_edit_exception(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         bid = await storage.save_booking(SAMPLE_BOOKING)
@@ -280,7 +318,9 @@ class TestRemindCancelEdge:
     """Lines 845-846: edit exception; 854-866: last-minute; 870-879: waitlist; 883-884: not found."""
 
     async def test_remind_cancel_edit_exception(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         bid = await storage.save_booking(SAMPLE_BOOKING)
@@ -293,12 +333,16 @@ class TestRemindCancelEdge:
         cb.answer.assert_called()
 
     async def test_remind_cancel_last_minute(self, db):
-        import handlers.booking as bk, storage
         from datetime import datetime, timedelta
+
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         # Booking within 2h from now
         from datetime import timezone
+
         now = datetime.now()
         soon = now + timedelta(minutes=30)
         booking_data = {
@@ -315,7 +359,9 @@ class TestRemindCancelEdge:
         bot.send_message.assert_called()
 
     async def test_remind_cancel_waitlist_notify(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         bid = await storage.save_booking(SAMPLE_BOOKING)
@@ -329,7 +375,9 @@ class TestRemindCancelEdge:
         bot.send_message.assert_called()
 
     async def test_remind_cancel_not_found(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         cb = make_callback(data="remind_cancel:nonexistent", user_id=111)
@@ -345,6 +393,7 @@ class TestReviewEdge:
 
     async def test_review_rating_not_int(self):
         import handlers.booking as bk
+
         setup_booking_config()
         cb = make_callback(data="review:bid:abc", user_id=111)
         fsm = make_fsm()
@@ -352,7 +401,9 @@ class TestReviewEdge:
         cb.answer.assert_called()
 
     async def test_review_comment_already_reviewed(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         bid = await storage.save_booking(SAMPLE_BOOKING)
@@ -367,7 +418,9 @@ class TestSkipCommentEdge:
     """Lines 977-989: skip_comment when already reviewed."""
 
     async def test_skip_comment_already_reviewed(self, db):
-        import handlers.booking as bk, storage
+        import handlers.booking as bk
+        import storage
+
         setup_booking_config()
         await storage.init_db()
         bid = await storage.save_booking(SAMPLE_BOOKING)

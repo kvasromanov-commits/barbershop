@@ -1,23 +1,23 @@
-import re
+import csv
 import html
 import logging
-import csv
-import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
-from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import Command, BaseFilter
+
+from aiogram import Bot, F, Router
+from aiogram.filters import BaseFilter, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
-import messages
-import keyboards
 import config
-import storage
+import keyboards
+import messages
 import scheduler
-from utils import send_with_retry, edit_with_retry
+import storage
 from emoji_config import E
+from utils import edit_with_retry, send_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class AdminFilter(BaseFilter):
     config.ADMIN_IDS. Applied to both message and callback_query updates
     on the admin router.
     """
+
     async def __call__(self, event) -> bool:
         user = getattr(event, "from_user", None)
         return user is not None and user.id in config.ADMIN_IDS
@@ -65,7 +66,7 @@ def is_safe_entity_name(name: str, max_bytes: int = 40) -> tuple[bool, str]:
     if "\n" in name or "\r" in name:
         return False, "Имя не может содержать переносы строк."
     if any(c in _DANGEROUS_NAME_CHARS for c in name):
-        return False, "Имя содержит недопустимые символы (< > \" `)."
+        return False, 'Имя содержит недопустимые символы (< > " `).'
     if len(name.encode("utf-8")) > max_bytes:
         return False, f"Имя слишком длинное (максимум {max_bytes} байт)."
     return True, ""
@@ -82,7 +83,7 @@ class AdminStates(StatesGroup):
     set_master_tg = State()
     set_master_work_days = State()
     set_master_services = State()
-    set_master_price = State()    # per-master price editing
+    set_master_price = State()  # per-master price editing
 
 
 @router.message(Command("admin"))
@@ -91,7 +92,13 @@ async def cmd_admin(message: Message, state: FSMContext):
     if not _is_admin(message.from_user.id):
         await send_with_retry(message.bot, message.chat.id, messages.ADMIN_ONLY)
         return
-    await send_with_retry(message.bot, message.chat.id, f"{E.LOCK} <b>Панель управления</b>", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot,
+        message.chat.id,
+        f"{E.LOCK} <b>Панель управления</b>",
+        reply_markup=keyboards.admin_kb(),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data == "admin")
@@ -100,7 +107,9 @@ async def cb_admin(callback: CallbackQuery, state: FSMContext):
     if not _is_admin(callback.from_user.id):
         await callback.answer(messages.ADMIN_ONLY, show_alert=True)
         return
-    await edit_with_retry(callback.message, f"{E.LOCK} <b>Панель управления</b>", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await edit_with_retry(
+        callback.message, f"{E.LOCK} <b>Панель управления</b>", reply_markup=keyboards.admin_kb(), parse_mode="HTML"
+    )
     await callback.answer()
 
 
@@ -131,7 +140,9 @@ async def cb_admin_stats(callback: CallbackQuery):
     except Exception as e:
         logger.error(f"Error in admin_stats: {e}")
         try:
-            await edit_with_retry(callback.message, messages.ERROR, reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+            await edit_with_retry(
+                callback.message, messages.ERROR, reply_markup=keyboards.admin_kb(), parse_mode="HTML"
+            )
         except Exception:
             pass
     await callback.answer()
@@ -141,16 +152,18 @@ async def cb_admin_stats(callback: CallbackQuery):
 async def cb_admin_bookings(callback: CallbackQuery):
     await _show_admin_bookings_page(callback, offset=0)
 
+
 @router.callback_query(F.data.startswith("admin_bookings_page:"))
 async def cb_admin_bookings_page(callback: CallbackQuery):
     try:
-        offset = int(callback.data.split(":",1)[1])
+        offset = int(callback.data.split(":", 1)[1])
     except (ValueError, IndexError):
         offset = 0
     await _show_admin_bookings_page(callback, offset=offset)
 
+
 async def _show_admin_bookings_page(callback, offset: int = 0):
-    PAGE = 5  # CRIT-03 FIX: 5 per page to fit manage buttons within Telegram limits
+    PAGE = 5  # CRIT-03 FIX: 5 per page to fit manage buttons within Telegram limits  # noqa: N806
     try:
         # HIGH-003 FIX: SQL-level pagination via get_upcoming_bookings_paged
         page_items, total = await storage.get_upcoming_bookings_paged(offset=offset, limit=PAGE)
@@ -162,20 +175,46 @@ async def _show_admin_bookings_page(callback, offset: int = 0):
             text += f"{E.EMPTY} Нет активных записей.\n"
         kb_rows = []
         for b in page_items:
-            kb_rows.append([InlineKeyboardButton(
-                text=f"\u270f\ufe0f {b['id']} \u2014 {keyboards._format_date(b['date'])} {b['time']}",
-                callback_data=f"admin_manage_booking:{b['id']}"
-            )])
+            kb_rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"\u270f\ufe0f {b['id']} \u2014 {keyboards._format_date(b['date'])} {b['time']}",
+                        callback_data=f"admin_manage_booking:{b['id']}",
+                    )
+                ]
+            )
         nav_buttons = []
         if offset > 0:
-            nav_buttons.append(InlineKeyboardButton(text="\u25c4 \u041d\u0430\u0437\u0430\u0434", callback_data=f"admin_bookings_page:{offset - PAGE}"))
-        nav_buttons.append(InlineKeyboardButton(text=f"{offset // PAGE + 1}/{(total - 1) // PAGE + 1 if total else 1}", callback_data="noop"))
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="\u25c4 \u041d\u0430\u0437\u0430\u0434", callback_data=f"admin_bookings_page:{offset - PAGE}"
+                )
+            )
+        nav_buttons.append(
+            InlineKeyboardButton(
+                text=f"{offset // PAGE + 1}/{(total - 1) // PAGE + 1 if total else 1}", callback_data="noop"
+            )
+        )
         if offset + PAGE < total:
-            nav_buttons.append(InlineKeyboardButton(text="\u0414\u0430\u043b\u044c\u0448\u0435 \u25ba", callback_data=f"admin_bookings_page:{offset + PAGE}"))
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text="\u0414\u0430\u043b\u044c\u0448\u0435 \u25ba",
+                    callback_data=f"admin_bookings_page:{offset + PAGE}",
+                )
+            )
         if nav_buttons:
             kb_rows.append(nav_buttons)
-        kb_rows.append([InlineKeyboardButton(text="\u041d\u0430\u0437\u0430\u0434 \u0432 \u043f\u0430\u043d\u0435\u043b\u044c", callback_data="admin")])
-        await edit_with_retry(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows), parse_mode="HTML")
+        kb_rows.append(
+            [
+                InlineKeyboardButton(
+                    text="\u041d\u0430\u0437\u0430\u0434 \u0432 \u043f\u0430\u043d\u0435\u043b\u044c",
+                    callback_data="admin",
+                )
+            ]
+        )
+        await edit_with_retry(
+            callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb_rows), parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Error in admin_bookings: {e}")
     await callback.answer()
@@ -198,9 +237,7 @@ async def cb_admin_manage_booking(callback: CallbackQuery):
             f"{E.MONEY} {booking['price']} \u20b8"
         )
         await edit_with_retry(
-            callback.message, text,
-            reply_markup=keyboards.admin_cancel_booking_kb(booking_id),
-            parse_mode="HTML"
+            callback.message, text, reply_markup=keyboards.admin_cancel_booking_kb(booking_id), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in admin_manage_booking: {e}")
@@ -216,18 +253,18 @@ async def cb_noop(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_export")
 async def cb_admin_export(callback: CallbackQuery):
-    
+
     filepath = None
     try:
         # P1 FIX: cap export at 1000 rows per page (Telegram 50MB limit + OOM safety)
         bookings, total = await storage.export_bookings_csv_paged(offset=0, limit=1000)
         filename = f"bookings_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
+
         # Use absolute path
-        scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
+        scripts_dir = Path(__file__).resolve().parent.parent / "scripts"  # noqa: ASYNC240
         scripts_dir.mkdir(exist_ok=True)
         filepath = scripts_dir / filename
-        
+
         # Cleanup old CSV files (older than 7 days)
         try:
             cutoff = datetime.now() - timedelta(days=7)
@@ -241,20 +278,35 @@ async def cb_admin_export(callback: CallbackQuery):
                     logger.warning(f"Failed to delete old CSV {old_file}: {e}")
         except Exception as e:
             logger.warning(f"Failed to cleanup old CSVs: {e}")
-        
-        with open(filepath, "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=["id", "date", "time", "name", "telegram_id", "username", "master", "service", "price", "status", "created_at"])
+
+        with open(filepath, "w", newline="", encoding="utf-8") as f:  # noqa: ASYNC230
+            writer = csv.DictWriter(
+                f,
+                fieldnames=[
+                    "id",
+                    "date",
+                    "time",
+                    "name",
+                    "telegram_id",
+                    "username",
+                    "master",
+                    "service",
+                    "price",
+                    "status",
+                    "created_at",
+                ],
+            )
             writer.writeheader()
             writer.writerows(bookings)
-        
+
         # Send CSV file to admin
         try:
             file = FSInputFile(str(filepath))
             await callback.message.answer_document(
                 document=file,
                 caption=f"{E.CHART} Экспорт записей (первые {len(bookings)} из {total})\n"
-                        f"{E.WARNING if total > len(bookings) else E.CHECK} "
-                        f"{'Есть ещё записи — экспорт ограничен 1000 строками за раз' if total > len(bookings) else 'Полный список'}"
+                f"{E.WARNING if total > len(bookings) else E.CHECK} "
+                f"{'Есть ещё записи — экспорт ограничен 1000 строками за раз' if total > len(bookings) else 'Полный список'}",
             )
             await edit_with_retry(
                 callback.message,
@@ -277,13 +329,13 @@ async def cb_admin_export(callback: CallbackQuery):
             pass
     finally:
         # Delete CSV after sending
-        if filepath and Path(filepath).exists():
+        if filepath and Path(filepath).exists():  # noqa: ASYNC240
             try:
-                Path(filepath).unlink()
+                Path(filepath).unlink()  # noqa: ASYNC240
                 logger.info(f"Cleaned up CSV file: {filepath}")
             except Exception as e:
                 logger.warning(f"Failed to delete CSV file {filepath}: {e}")
-    
+
     await callback.answer()
 
 
@@ -293,12 +345,7 @@ async def cb_admin_masters(callback: CallbackQuery):
         text = f"{E.USER} <b>Мастера:</b>\n\nВыберите мастера:"
         if not config.MASTERS:
             text = f"{E.USER} <b>Мастера:</b>\n\n{E.EMPTY} Нет мастеров."
-        await edit_with_retry(
-            callback.message,
-            text,
-            reply_markup=keyboards.admin_masters_kb(),
-            parse_mode="HTML"
-        )
+        await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_masters_kb(), parse_mode="HTML")
     except Exception as e:
         logger.error(f"Error in admin_masters: {e}")
     await callback.answer()
@@ -322,7 +369,7 @@ async def handle_add_master(message: Message, state: FSMContext):
         await send_with_retry(message.bot, message.chat.id, "Неверный формат. Введите: Имя, опыт, специализация")
         return
     name, experience, specialization = parts[0], parts[1], parts[2]
-    
+
     # MED-8 FIX: validate name (length + dangerous chars)
     ok, err = is_safe_entity_name(name, max_bytes=40)
     if not ok:
@@ -336,7 +383,13 @@ async def handle_add_master(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Failed to save master to DB: {e}")
     await state.clear()
-    await send_with_retry(message.bot, message.chat.id, f"Мастер {html.escape(name)} добавлен.", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot,
+        message.chat.id,
+        f"Мастер {html.escape(name)} добавлен.",
+        reply_markup=keyboards.admin_kb(),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("admin_master_detail:"))
@@ -373,7 +426,7 @@ async def handle_edit_master(message: Message, state: FSMContext):
         await send_with_retry(message.bot, message.chat.id, "Неверный формат. Введите: Имя, опыт, специализация")
         return
     name, experience, specialization = parts[0], parts[1], parts[2]
-    
+
     # MED-8 FIX: validate name (length + dangerous chars)
     ok, err = is_safe_entity_name(name, max_bytes=40)
     if not ok:
@@ -390,32 +443,43 @@ async def handle_edit_master(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Failed to update master in DB: {e}")
     await state.clear()
-    await send_with_retry(message.bot, message.chat.id, f"Мастер {html.escape(name)} обновлён.", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot,
+        message.chat.id,
+        f"Мастер {html.escape(name)} обновлён.",
+        reply_markup=keyboards.admin_kb(),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("admin_remove_master:"))
 async def cb_admin_remove_master(callback: CallbackQuery):
     master_name = callback.data.split(":", 1)[1]
-    
+
     # Check if master has active bookings
     try:
         stats = await storage.get_master_stats(master_name)
         if stats and stats.get("active", 0) > 0:
             await callback.answer(
                 f"Невозможно удалить мастера {master_name}: у него есть {stats['active']} активных записей. Сначала завершите или отмените их.",
-                show_alert=True
+                show_alert=True,
             )
             return
     except Exception as e:
         logger.error(f"Failed to check master stats: {e}")
-    
+
     if master_name in config.MASTERS:
         del config.MASTERS[master_name]
         try:
             await storage.remove_master(master_name)
         except Exception as e:
             logger.error(f"Failed to remove master from DB: {e}")
-        await edit_with_retry(callback.message, f"{E.CROSS} Мастер {master_name} удалён.", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+        await edit_with_retry(
+            callback.message,
+            f"{E.CROSS} Мастер {master_name} удалён.",
+            reply_markup=keyboards.admin_kb(),
+            parse_mode="HTML",
+        )
     else:
         await callback.answer("Мастер не найден", show_alert=True)
         return
@@ -463,7 +527,7 @@ async def handle_add_service(message: Message, state: FSMContext):
         await send_with_retry(message.bot, message.chat.id, "Неверный формат. Введите: Название, цена")
         return
     name = parts[0].strip()
-    
+
     # MED-8 FIX: validate name (length + dangerous chars)
     ok, err = is_safe_entity_name(name, max_bytes=35)
     if not ok:
@@ -475,11 +539,11 @@ async def handle_add_service(message: Message, state: FSMContext):
     except ValueError:
         await send_with_retry(message.bot, message.chat.id, "Цена должна быть числом.")
         return
-    
+
     if price <= 0:
         await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Цена должна быть больше 0.", parse_mode="HTML")
         return
-    
+
     config.SERVICES[name] = price
     try:
         await storage.save_service(name, price)
@@ -487,7 +551,13 @@ async def handle_add_service(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Failed to save service to DB: {e}")
     await state.clear()
-    await send_with_retry(message.bot, message.chat.id, f"Услуга {html.escape(name)} добавлена ({price} ₸).", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot,
+        message.chat.id,
+        f"Услуга {html.escape(name)} добавлена ({price} ₸).",
+        reply_markup=keyboards.admin_kb(),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("admin_service_detail:"))
@@ -528,7 +598,7 @@ async def handle_edit_service(message: Message, state: FSMContext):
         await send_with_retry(message.bot, message.chat.id, "Неверный формат. Введите: Название, цена")
         return
     name = parts[0].strip()
-    
+
     # MED-8 FIX: validate name (length + dangerous chars)
     ok, err = is_safe_entity_name(name, max_bytes=35)
     if not ok:
@@ -540,12 +610,12 @@ async def handle_edit_service(message: Message, state: FSMContext):
     except ValueError:
         await send_with_retry(message.bot, message.chat.id, "Цена должна быть числом.")
         return
-    
+
     # BUG-013 FIX: Validate price > 0
     if price <= 0:
         await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Цена должна быть больше 0.", parse_mode="HTML")
         return
-    
+
     if service_name in config.SERVICES:
         del config.SERVICES[service_name]
     config.SERVICES[name] = price
@@ -556,7 +626,13 @@ async def handle_edit_service(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Failed to update service in DB: {e}")
     await state.clear()
-    await send_with_retry(message.bot, message.chat.id, f"Услуга {html.escape(name)} обновлена ({price} ₸).", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+    await send_with_retry(
+        message.bot,
+        message.chat.id,
+        f"Услуга {html.escape(name)} обновлена ({price} ₸).",
+        reply_markup=keyboards.admin_kb(),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data.startswith("admin_remove_service:"))
@@ -573,23 +649,27 @@ async def cb_admin_remove_service(callback: CallbackQuery):
         if active_count > 0:
             await callback.answer(
                 f"Невозможно удалить услугу «{service_name}»: есть {active_count} активных записей. Сначала завершите или отмените их.",
-                show_alert=True
+                show_alert=True,
             )
             return
     except Exception as e:
         logger.error(f"Failed to check active bookings for service: {e}")
     # Show confirm dialog
-    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text=f"{E.CHECK} Да, удалить", callback_data=f"admin_confirm_remove_service:{service_name}"),
-            InlineKeyboardButton(text=f"{E.CROSS} Отмена", callback_data=f"admin_service_detail:{service_name}"),
+    confirm_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"{E.CHECK} Да, удалить", callback_data=f"admin_confirm_remove_service:{service_name}"
+                ),
+                InlineKeyboardButton(text=f"{E.CROSS} Отмена", callback_data=f"admin_service_detail:{service_name}"),
+            ]
         ]
-    ])
+    )
     await edit_with_retry(
         callback.message,
         f"Удалить услугу <b>{html.escape(service_name)}</b>?\n\nЭто действие нельзя отменить.",
         reply_markup=confirm_kb,
-        parse_mode="HTML"
+        parse_mode="HTML",
     )
     await callback.answer()
 
@@ -605,7 +685,12 @@ async def cb_admin_confirm_remove_service(callback: CallbackQuery):
             await config.save_config_to_db()
         except Exception as e:
             logger.error(f"Failed to remove service from DB: {e}")
-        await edit_with_retry(callback.message, f"{E.CROSS} Услуга {html.escape(service_name)} удалена.", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+        await edit_with_retry(
+            callback.message,
+            f"{E.CROSS} Услуга {html.escape(service_name)} удалена.",
+            reply_markup=keyboards.admin_kb(),
+            parse_mode="HTML",
+        )
     else:
         await callback.answer("Услуга не найдена", show_alert=True)
         return
@@ -639,14 +724,16 @@ async def handle_change_address(message: Message, state: FSMContext):
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите адрес текстом.")
         return
-    
+
     address = message.text.strip()
-    
+
     # BUG-010 FIX: Validate address length
     if len(address) > 200:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Адрес слишком длинный. Максимум 200 символов.", parse_mode="HTML")
+        await send_with_retry(
+            message.bot, message.chat.id, f"{E.CROSS} Адрес слишком длинный. Максимум 200 символов.", parse_mode="HTML"
+        )
         return
-    
+
     config.BARBERSHOP_ADDRESS = address
     try:
         await storage.save_settings("address", config.BARBERSHOP_ADDRESS)
@@ -669,14 +756,19 @@ async def handle_change_phone(message: Message, state: FSMContext):
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите телефон текстом.")
         return
-    
+
     phone = message.text.strip()
-    
+
     # BUG-010 FIX: Validate phone length
     if len(phone) > 200:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Телефон слишком длинный. Максимум 200 символов.", parse_mode="HTML")
+        await send_with_retry(
+            message.bot,
+            message.chat.id,
+            f"{E.CROSS} Телефон слишком длинный. Максимум 200 символов.",
+            parse_mode="HTML",
+        )
         return
-    
+
     config.BARBERSHOP_PHONE = phone
     try:
         await storage.save_settings("phone", config.BARBERSHOP_PHONE)
@@ -690,7 +782,9 @@ async def handle_change_phone(message: Message, state: FSMContext):
 @router.callback_query(F.data == "admin_change_hours")
 async def cb_admin_change_hours(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.change_hours)
-    await edit_with_retry(callback.message, "Введите новые часы работы (например: Пн-Сб: 10:00-21:00, Вс: 11:00-19:00):")
+    await edit_with_retry(
+        callback.message, "Введите новые часы работы (например: Пн-Сб: 10:00-21:00, Вс: 11:00-19:00):"
+    )
     await callback.answer()
 
 
@@ -699,66 +793,76 @@ async def handle_change_hours(message: Message, state: FSMContext):
     if not message.text or not message.text.strip():
         await send_with_retry(message.bot, message.chat.id, "Введите часы работы текстом.")
         return
-    
+
     new_hours = message.text.strip()
-    
+
     # BUG-010 FIX: Validate hours length
     if len(new_hours) > 200:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Часы работы слишком длинные. Максимум 200 символов.", parse_mode="HTML")
+        await send_with_retry(
+            message.bot,
+            message.chat.id,
+            f"{E.CROSS} Часы работы слишком длинные. Максимум 200 символов.",
+            parse_mode="HTML",
+        )
         return
-    
+
     # Parse new working hours to update WORKING_HOURS dict
     # Example format: "Пн-Сб: 10:00-21:00, Вс: 11:00-19:00"
     # We need to extract the time ranges and update config.WORKING_HOURS
     try:
         # Simple parsing logic - extract hours from the text
-            
+
         # Find all time patterns like "10:00-21:00"
-        time_patterns = re.findall(r'(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', new_hours)
-        
+        time_patterns = re.findall(r"(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", new_hours)
+
         if time_patterns:
             # Determine which days use which hours
             # Default: all days use the first time range found
             default_hours = (int(time_patterns[0][0]), int(time_patterns[0][2]))
-            
+
             # BUG-005 FIX: Check for Sunday (Вс/вс/Sunday/sunday) with correct regex
-            sunday_pattern = re.search(r'[Вв]с[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', new_hours)
+            sunday_pattern = re.search(r"[Вв]с[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", new_hours)
             if not sunday_pattern:
-                sunday_pattern = re.search(r'[Ss]unday[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', new_hours, re.IGNORECASE)
-            
+                sunday_pattern = re.search(
+                    r"[Ss]unday[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", new_hours, re.IGNORECASE
+                )
+
             if sunday_pattern:
                 sunday_hours = (int(sunday_pattern.group(1)), int(sunday_pattern.group(3)))
             else:
                 sunday_hours = default_hours
-            
+
             # BUG-005 FIX: Check for Saturday (Сб/сб/Saturday/saturday) with correct regex
-            saturday_pattern = re.search(r'[Сс]б[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', new_hours)
+            saturday_pattern = re.search(r"[Сс]б[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", new_hours)
             if not saturday_pattern:
-                saturday_pattern = re.search(r'[Ss]aturday[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})', new_hours, re.IGNORECASE)
-            
+                saturday_pattern = re.search(
+                    r"[Ss]aturday[:\s]+(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})", new_hours, re.IGNORECASE
+                )
+
             if saturday_pattern:
                 saturday_hours = (int(saturday_pattern.group(1)), int(saturday_pattern.group(3)))
             else:
                 saturday_hours = default_hours
-            
+
             # Update WORKING_HOURS configuration
             config.WORKING_HOURS = {
-                "monday":    default_hours,
-                "tuesday":   default_hours,
+                "monday": default_hours,
+                "tuesday": default_hours,
                 "wednesday": default_hours,
-                "thursday":  default_hours,
-                "friday":    default_hours,
-                "saturday":  saturday_hours,
-                "sunday":    sunday_hours,
+                "thursday": default_hours,
+                "friday": default_hours,
+                "saturday": saturday_hours,
+                "sunday": sunday_hours,
             }
-            
+
             # MED-04 FIX: Validate that start < end before generating slots
             start_h, end_h = default_hours
             if start_h >= end_h:
                 await send_with_retry(
-                    message.bot, message.chat.id,
+                    message.bot,
+                    message.chat.id,
                     f"{E.CROSS} Ошибка: время начала ({start_h}:00) должно быть меньше времени конца ({end_h}:00). Введите корректный диапазон.",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
             new_time_slots = []
@@ -770,19 +874,20 @@ async def handle_change_hours(message: Message, state: FSMContext):
             # MED-01 FIX: Guard against empty slots list (should not happen after check above, but be safe)
             if not new_time_slots:
                 await send_with_retry(
-                    message.bot, message.chat.id,
+                    message.bot,
+                    message.chat.id,
                     f"{E.CROSS} Не удалось сформировать временные слоты. Проверьте формат (например: 10:00-21:00).",
-                    parse_mode="HTML"
+                    parse_mode="HTML",
                 )
                 return
             config.TIME_SLOTS = new_time_slots
-            
+
             logger.info(f"Updated working hours: {config.WORKING_HOURS}")
             logger.info(f"Updated time slots: {config.TIME_SLOTS}")
     except Exception as e:
         logger.error(f"Failed to parse working hours: {e}")
         # Continue anyway with the text update
-    
+
     config.BARBERSHOP_WORKING_HOURS = new_hours
     try:
         await storage.save_settings("hours", config.BARBERSHOP_WORKING_HOURS)
@@ -799,10 +904,8 @@ async def handle_change_hours(message: Message, state: FSMContext):
     await send_with_retry(
         message.bot,
         message.chat.id,
-        "Часы работы обновлены.\n\n"
-        f"Новые часы: {config.BARBERSHOP_WORKING_HOURS}\n"
-        f"{slots_info}",
-        reply_markup=keyboards.admin_kb()
+        f"Часы работы обновлены.\n\nНовые часы: {config.BARBERSHOP_WORKING_HOURS}\n{slots_info}",
+        reply_markup=keyboards.admin_kb(),
     )
 
 
@@ -810,29 +913,20 @@ async def handle_change_hours(message: Message, state: FSMContext):
 async def cb_admin_pre_cancel(callback: CallbackQuery):
     """HIGH-7 FIX: Confirm dialog before admin cancels booking."""
     booking_id = callback.data.split(":", 1)[1]
-    confirm_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="✅ Да, отменить",
-                callback_data=f"admin_cancel_booking:{booking_id}"
-            ),
-            InlineKeyboardButton(
-                text="❌ Нет",
-                callback_data=f"admin_manage_booking:{booking_id}"
-            ),
+    confirm_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Да, отменить", callback_data=f"admin_cancel_booking:{booking_id}"),
+                InlineKeyboardButton(text="❌ Нет", callback_data=f"admin_manage_booking:{booking_id}"),
+            ]
         ]
-    ])
+    )
     confirm_text = (
         "⚠️ <b>Отменить запись <code>"
-        + booking_id +
-        "</code>?</b>\n\nПользователь получит уведомление. Действие нельзя отменить."
+        + booking_id
+        + "</code>?</b>\n\nПользователь получит уведомление. Действие нельзя отменить."
     )
-    await edit_with_retry(
-        callback.message,
-        confirm_text,
-        reply_markup=confirm_kb,
-        parse_mode="HTML"
-    )
+    await edit_with_retry(callback.message, confirm_text, reply_markup=confirm_kb, parse_mode="HTML")
     await callback.answer()
 
 
@@ -855,7 +949,7 @@ async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
                 f"{E.ID} ID: <code>{booking_id}</code>\n"
                 f"{E.CALENDAR} {_ub_date} в {_ub_time}\n"
                 f"{E.SCISSORS} Мастер: {_ub_master}",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             # HIGH-1 FIX: уведомить мастера об отмене записи
             _master_tg = config.MASTER_IDS.get(booking["master"])
@@ -870,7 +964,7 @@ async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
                         f"{E.INFO} <b>Запись отменена админом</b>\n\n"
                         f"{E.USER} {_b_name}\n"
                         f"{E.CALENDAR} {_b_date} в {_b_time}",
-                        parse_mode="HTML"
+                        parse_mode="HTML",
                     )
                 except Exception as _me:
                     logger.error(f"Failed to notify master on admin cancel: {_me}")
@@ -892,7 +986,12 @@ async def cb_admin_cancel_booking(callback: CallbackQuery, bot: Bot):
                         logger.error(f"Failed to notify waitlist {_wl['telegram_id']}: {_wle}")
             except Exception as _wle:
                 logger.error(f"Waitlist notify failed on admin cancel: {_wle}")
-            await edit_with_retry(callback.message, f"{E.CHECK} <b>Запись отменена</b>\n\n{E.ID} <code>{booking_id}</code>", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+            await edit_with_retry(
+                callback.message,
+                f"{E.CHECK} <b>Запись отменена</b>\n\n{E.ID} <code>{booking_id}</code>",
+                reply_markup=keyboards.admin_kb(),
+                parse_mode="HTML",
+            )
         else:
             await callback.answer("Запись не найдена или уже не активна", show_alert=True)
             return
@@ -910,12 +1009,12 @@ async def cb_admin_complete_booking(callback: CallbackQuery, bot: Bot):
         booking = await storage.admin_complete_booking(booking_id)
         if booking:
             await scheduler.cancel_reminders(booking_id)
-            
+
             # TASK-03: Update loyalty ONLY on real visit completion (not at booking)
             telegram_id = booking["telegram_id"]
             name = booking["name"]
             visits = await storage.update_loyalty(telegram_id, name)
-            
+
             # Check if user earned a reward
             if visits % config.LOYALTY_VISIT_INTERVAL == 0:
                 try:
@@ -924,7 +1023,7 @@ async def cb_admin_complete_booking(callback: CallbackQuery, bot: Bot):
                     await bot.send_message(telegram_id, reward_text, parse_mode="HTML")
                 except Exception as e:
                     logger.error(f"Failed to send loyalty reward to user {telegram_id}: {e}")
-            
+
             # Task 18: Уведомить мастера о завершении визита
             master_name = booking["master"]
             if master_name in config.MASTER_IDS:
@@ -933,12 +1032,17 @@ async def cb_admin_complete_booking(callback: CallbackQuery, bot: Bot):
                         f"{E.CHECK} <b>Завершён визит</b>\n\n"
                         f"{E.USER} Клиент: {html.escape(name)}\n"
                         f"{E.CALENDAR} {keyboards._format_date(booking['date'])} в {booking['time']}\n"
-                        f"{E.MONEY} Оплачено: " + "{:,}".format(booking["price"]).replace(","," ") + " ₸"
+                        f"{E.MONEY} Оплачено: " + "{:,}".format(booking["price"]).replace(",", " ") + " ₸"
                     )
                     await bot.send_message(config.MASTER_IDS[master_name], master_done_text, parse_mode="HTML")
                 except Exception as _me:
                     logger.error(f"Failed to notify master on completion: {_me}")
-            await edit_with_retry(callback.message, f"{E.CHECK} <b>Запись завершена</b>\n\n{E.ID} <code>{booking_id}</code>\n{E.USER} {html.escape(name)} получил +1 визит (всего: {visits})", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+            await edit_with_retry(
+                callback.message,
+                f"{E.CHECK} <b>Запись завершена</b>\n\n{E.ID} <code>{booking_id}</code>\n{E.USER} {html.escape(name)} получил +1 визит (всего: {visits})",
+                reply_markup=keyboards.admin_kb(),
+                parse_mode="HTML",
+            )
         else:
             await callback.answer("Запись не найдена или уже не активна", show_alert=True)
             return
@@ -965,7 +1069,7 @@ async def cb_admin_waitlist_page(callback: CallbackQuery):
 
 async def _show_admin_waitlist_page(callback, offset: int = 0):
     """L-7 FIX: SQL-level pagination for waitlist (no full table in memory)."""
-    PAGE = 15
+    PAGE = 15  # noqa: N806
     try:
         page_items, total = await storage.get_all_waitlist_paged(offset=offset, limit=PAGE)
         text = f"{E.RELOAD} Список ожидания ({total} всего):\n\n"
@@ -975,11 +1079,19 @@ async def _show_admin_waitlist_page(callback, offset: int = 0):
             text += f"{E.EMPTY} Список ожидания пуст.\n"
         nav_buttons = []
         if offset > 0:
-            nav_buttons.append(InlineKeyboardButton(text="◀ Назад", callback_data=f"admin_waitlist_page:{offset - PAGE}"))
+            nav_buttons.append(
+                InlineKeyboardButton(text="◀ Назад", callback_data=f"admin_waitlist_page:{offset - PAGE}")
+            )
         if total > 0:
-            nav_buttons.append(InlineKeyboardButton(text=f"{offset // PAGE + 1}/{max(1, (total - 1) // PAGE + 1)}", callback_data="noop"))
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text=f"{offset // PAGE + 1}/{max(1, (total - 1) // PAGE + 1)}", callback_data="noop"
+                )
+            )
         if offset + PAGE < total:
-            nav_buttons.append(InlineKeyboardButton(text="▶ Далее", callback_data=f"admin_waitlist_page:{offset + PAGE}"))
+            nav_buttons.append(
+                InlineKeyboardButton(text="▶ Далее", callback_data=f"admin_waitlist_page:{offset + PAGE}")
+            )
         kb_rows = []
         if nav_buttons:
             kb_rows.append(nav_buttons)
@@ -1007,7 +1119,7 @@ async def cb_admin_reviews_page(callback: CallbackQuery):
 
 async def _show_admin_reviews_page(callback, offset: int = 0):
     """HIGH-06 FIX + P1 FIX: SQL-level paginated reviews to avoid OOM on large datasets."""
-    PAGE = 15
+    PAGE = 15  # noqa: N806
     try:
         page_items, total = await storage.get_reviews_paged(offset=offset, limit=PAGE)
         text = f"{E.COMMENT} Отзывы ({total} всего):\n\n"
@@ -1022,11 +1134,19 @@ async def _show_admin_reviews_page(callback, offset: int = 0):
             text += f"{E.EMPTY} Нет отзывов.\n"
         nav_buttons = []
         if offset > 0:
-            nav_buttons.append(InlineKeyboardButton(text="◀ Назад", callback_data=f"admin_reviews_page:{offset - PAGE}"))
+            nav_buttons.append(
+                InlineKeyboardButton(text="◀ Назад", callback_data=f"admin_reviews_page:{offset - PAGE}")
+            )
         if total > 0:
-            nav_buttons.append(InlineKeyboardButton(text=f"{offset // PAGE + 1}/{max(1, (total - 1) // PAGE + 1)}", callback_data="noop"))
+            nav_buttons.append(
+                InlineKeyboardButton(
+                    text=f"{offset // PAGE + 1}/{max(1, (total - 1) // PAGE + 1)}", callback_data="noop"
+                )
+            )
         if offset + PAGE < total:
-            nav_buttons.append(InlineKeyboardButton(text="▶ Далее", callback_data=f"admin_reviews_page:{offset + PAGE}"))
+            nav_buttons.append(
+                InlineKeyboardButton(text="▶ Далее", callback_data=f"admin_reviews_page:{offset + PAGE}")
+            )
         kb_rows = []
         if nav_buttons:
             kb_rows.append(nav_buttons)
@@ -1044,8 +1164,10 @@ async def cb_admin_loyalty(callback: CallbackQuery):
         # P1 FIX: SQL-level pagination — no longer truncated to first 50 silently
         page, total = await storage.get_loyalty_list_paged(offset=0, limit=50)
         text = f"{E.STAR} Клиенты с бонусами ({total} всего):\n\n"
-        for l in page:
-            text += f"{E.USER} {html.escape(str(l['name'] or 'Аноним'))}: визитов {l['visits']}, бонусов {l['bonuses']}\n"
+        for l in page:  # noqa: E741
+            text += (
+                f"{E.USER} {html.escape(str(l['name'] or 'Аноним'))}: визитов {l['visits']}, бонусов {l['bonuses']}\n"
+            )
         if total == 0:
             text += f"{E.EMPTY} Нет данных о лояльности.\n"
         elif total > 50:
@@ -1101,99 +1223,108 @@ async def cb_admin_set_master_tg(callback: CallbackQuery, state: FSMContext):
 @router.message(AdminStates.set_master_tg)
 async def handle_set_master_tg(message: Message, state: FSMContext):
     if not message.text or not message.text.strip().lstrip("-").isdigit():
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Введите числовой Telegram ID (например: 123456789) или 0 для удаления.", parse_mode="HTML")
+        await send_with_retry(
+            message.bot,
+            message.chat.id,
+            f"{E.CROSS} Введите числовой Telegram ID (например: 123456789) или 0 для удаления.",
+            parse_mode="HTML",
+        )
         return
     data = await state.get_data()
     master_name = data.get("master_name")
     if not master_name:
         await state.clear()
-        await send_with_retry(message.bot, message.chat.id, "Сессия устарела. Откройте панель мастера заново.", reply_markup=keyboards.admin_kb())
+        await send_with_retry(
+            message.bot,
+            message.chat.id,
+            "Сессия устарела. Откройте панель мастера заново.",
+            reply_markup=keyboards.admin_kb(),
+        )
         return
     tg_id_str = message.text.strip()
     try:
         tg_id = int(tg_id_str)
     except ValueError:
-        await send_with_retry(message.bot, message.chat.id, f"{E.CROSS} Неверный формат. Введите число.", parse_mode="HTML")
+        await send_with_retry(
+            message.bot, message.chat.id, f"{E.CROSS} Неверный формат. Введите число.", parse_mode="HTML"
+        )
         return
     if tg_id == 0:
         # Remove TG ID
         config.MASTER_IDS.pop(master_name, None)
         await storage.set_master_telegram_id(master_name, None)
         await state.clear()
-        await send_with_retry(message.bot, message.chat.id, f"{E.CHECK} Telegram ID мастера {html.escape(master_name)} удалён.", reply_markup=keyboards.admin_kb(), parse_mode="HTML")
+        await send_with_retry(
+            message.bot,
+            message.chat.id,
+            f"{E.CHECK} Telegram ID мастера {html.escape(master_name)} удалён.",
+            reply_markup=keyboards.admin_kb(),
+            parse_mode="HTML",
+        )
     else:
         config.MASTER_IDS[master_name] = tg_id
         await storage.set_master_telegram_id(master_name, tg_id)
         await state.clear()
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             f"{E.CHECK} Telegram ID мастера {html.escape(master_name)} установлен: <code>{tg_id}</code>",
-            reply_markup=keyboards.admin_kb(), parse_mode="HTML"
+            reply_markup=keyboards.admin_kb(),
+            parse_mode="HTML",
         )
 
 
 # --- Master schedule management ---
 
+
 @router.callback_query(F.data.startswith("master_schedule:"))
 async def cb_master_schedule(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         master_name = callback.data.split(":", 1)[1]
         if master_name not in config.MASTERS:
             await callback.answer("Мастер не найден", show_alert=True)
             return
-        
+
         # Load current work days from DB
         work_days = await storage.get_master_work_days(master_name)
-        
+
         # Save to FSM state
         await state.update_data(master_name=master_name, work_days=work_days)
         await state.set_state(AdminStates.set_master_work_days)
-        
+
         # Build keyboard
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         text = f"{E.CALENDAR} <b>Расписание мастера {html.escape(master_name)}</b>\n\n"
         text += "Выберите рабочие дни:\n\n"
-        
+
         buttons = []
         # First 3 days
         row1 = []
         for i in range(1, 4):
             emoji = "✅" if i in work_days else "❌"
-            row1.append(InlineKeyboardButton(
-                text=f"{day_names[i-1]} {emoji}",
-                callback_data=f"toggle_day:{i}"
-            ))
+            row1.append(InlineKeyboardButton(text=f"{day_names[i - 1]} {emoji}", callback_data=f"toggle_day:{i}"))
         buttons.append(row1)
-        
+
         # Next 3 days
         row2 = []
         for i in range(4, 7):
             emoji = "✅" if i in work_days else "❌"
-            row2.append(InlineKeyboardButton(
-                text=f"{day_names[i-1]} {emoji}",
-                callback_data=f"toggle_day:{i}"
-            ))
+            row2.append(InlineKeyboardButton(text=f"{day_names[i - 1]} {emoji}", callback_data=f"toggle_day:{i}"))
         buttons.append(row2)
-        
+
         # Sunday
         row3 = []
         emoji = "✅" if 7 in work_days else "❌"
-        row3.append(InlineKeyboardButton(
-            text=f"{day_names[6]} {emoji}",
-            callback_data=f"toggle_day:7"
-        ))
+        row3.append(InlineKeyboardButton(text=f"{day_names[6]} {emoji}", callback_data="toggle_day:7"))
         buttons.append(row3)
-        
+
         # Save button
         buttons.append([InlineKeyboardButton(text="Сохранить", callback_data="save_master_days")])
         buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
-        
+
         await edit_with_retry(
-            callback.message,
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
+            callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in master_schedule: {e}")
@@ -1203,66 +1334,54 @@ async def cb_master_schedule(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("toggle_day:"), AdminStates.set_master_work_days)
 async def cb_toggle_day(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         day_num = int(callback.data.split(":", 1)[1])
         data = await state.get_data()
         work_days = data.get("work_days", [])
         master_name = data.get("master_name", "")
-        
+
         # Toggle day
         if day_num in work_days:
             work_days.remove(day_num)
         else:
             work_days.append(day_num)
-        
+
         # Update state
         await state.update_data(work_days=work_days)
-        
+
         # Rebuild keyboard
         day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
         text = f"{E.CALENDAR} <b>Расписание мастера {html.escape(master_name)}</b>\n\n"
         text += "Выберите рабочие дни:\n\n"
-        
+
         buttons = []
         # First 3 days
         row1 = []
         for i in range(1, 4):
             emoji = "✅" if i in work_days else "❌"
-            row1.append(InlineKeyboardButton(
-                text=f"{day_names[i-1]} {emoji}",
-                callback_data=f"toggle_day:{i}"
-            ))
+            row1.append(InlineKeyboardButton(text=f"{day_names[i - 1]} {emoji}", callback_data=f"toggle_day:{i}"))
         buttons.append(row1)
-        
+
         # Next 3 days
         row2 = []
         for i in range(4, 7):
             emoji = "✅" if i in work_days else "❌"
-            row2.append(InlineKeyboardButton(
-                text=f"{day_names[i-1]} {emoji}",
-                callback_data=f"toggle_day:{i}"
-            ))
+            row2.append(InlineKeyboardButton(text=f"{day_names[i - 1]} {emoji}", callback_data=f"toggle_day:{i}"))
         buttons.append(row2)
-        
+
         # Sunday
         row3 = []
         emoji = "✅" if 7 in work_days else "❌"
-        row3.append(InlineKeyboardButton(
-            text=f"{day_names[6]} {emoji}",
-            callback_data=f"toggle_day:7"
-        ))
+        row3.append(InlineKeyboardButton(text=f"{day_names[6]} {emoji}", callback_data="toggle_day:7"))
         buttons.append(row3)
-        
+
         # Save button
         buttons.append([InlineKeyboardButton(text="Сохранить", callback_data="save_master_days")])
         buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
-        
+
         await edit_with_retry(
-            callback.message,
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
+            callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in toggle_day: {e}")
@@ -1271,33 +1390,28 @@ async def cb_toggle_day(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "save_master_days", AdminStates.set_master_work_days)
 async def cb_save_master_days(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         data = await state.get_data()
         master_name = data.get("master_name", "")
         work_days = data.get("work_days", [])
-        
+
         if not work_days:
             await callback.answer("Выберите хотя бы один рабочий день", show_alert=True)
             return
-        
+
         # Save to DB
         success = await storage.set_master_work_days(master_name, work_days)
-        
+
         if success:
             day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
-            days_str = ", ".join(day_names[d-1] for d in sorted(work_days))
+            days_str = ", ".join(day_names[d - 1] for d in sorted(work_days))
             text = f"{E.CHECK} <b>Расписание сохранено</b>\n\n"
             text += f"Мастер: {html.escape(master_name)}\n"
             text += f"Работает: {days_str}"
-            
+
             await state.clear()
-            await edit_with_retry(
-                callback.message,
-                text,
-                reply_markup=keyboards.admin_kb(),
-                parse_mode="HTML"
-            )
+            await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_kb(), parse_mode="HTML")
         else:
             await callback.answer("Ошибка сохранения", show_alert=True)
             return
@@ -1310,43 +1424,45 @@ async def cb_save_master_days(callback: CallbackQuery, state: FSMContext):
 
 # --- Master services management ---
 
+
 @router.callback_query(F.data.startswith("master_services:"))
 async def cb_master_services(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         master_name = callback.data.split(":", 1)[1]
         if master_name not in config.MASTERS:
             await callback.answer("Мастер не найден", show_alert=True)
             return
-        
+
         # Load current services from DB
         master_services = await storage.get_master_services(master_name)
-        
+
         # Save to FSM state
         await state.update_data(master_name=master_name, master_services=master_services)
         await state.set_state(AdminStates.set_master_services)
-        
+
         # Build keyboard
         text = f"{E.SCISSORS} <b>Услуги мастера {html.escape(master_name)}</b>\n\n"
         text += "Выберите доступные услуги:\n\n"
-        
+
         buttons = []
         for service_name, price in config.SERVICES.items():
             emoji = "✅" if service_name in master_services else "❌"
-            buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {service_name} — {price:,} ₸".replace(",", " "),
-                callback_data=f"toggle_service:{service_name}"
-            )])
-        
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"{emoji} {service_name} — {price:,} ₸".replace(",", " "),
+                        callback_data=f"toggle_service:{service_name}",
+                    )
+                ]
+            )
+
         # Save button
         buttons.append([InlineKeyboardButton(text="Сохранить", callback_data="save_master_services")])
         buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
-        
+
         await edit_with_retry(
-            callback.message,
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
+            callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in master_services: {e}")
@@ -1357,43 +1473,44 @@ async def cb_master_services(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data.startswith("toggle_service:"), AdminStates.set_master_services)
 async def cb_toggle_service(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         service_name = callback.data.split(":", 1)[1]
         data = await state.get_data()
         master_services = data.get("master_services", [])
         master_name = data.get("master_name", "")
-        
+
         # Toggle service
         if service_name in master_services:
             master_services.remove(service_name)
         else:
             master_services.append(service_name)
-        
+
         # Update state
         await state.update_data(master_services=master_services)
-        
+
         # Rebuild keyboard
         text = f"{E.SCISSORS} <b>Услуги мастера {html.escape(master_name)}</b>\n\n"
         text += "Выберите доступные услуги:\n\n"
-        
+
         buttons = []
         for svc_name, price in config.SERVICES.items():
             emoji = "✅" if svc_name in master_services else "❌"
-            buttons.append([InlineKeyboardButton(
-                text=f"{emoji} {svc_name} — {price:,} ₸".replace(",", " "),
-                callback_data=f"toggle_service:{svc_name}"
-            )])
-        
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"{emoji} {svc_name} — {price:,} ₸".replace(",", " "),
+                        callback_data=f"toggle_service:{svc_name}",
+                    )
+                ]
+            )
+
         # Save button
         buttons.append([InlineKeyboardButton(text="Сохранить", callback_data="save_master_services")])
         buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
-        
+
         await edit_with_retry(
-            callback.message,
-            text,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-            parse_mode="HTML"
+            callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
         )
     except Exception as e:
         logger.error(f"Error in toggle_service: {e}")
@@ -1402,34 +1519,29 @@ async def cb_toggle_service(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "save_master_services", AdminStates.set_master_services)
 async def cb_save_master_services(callback: CallbackQuery, state: FSMContext):
-    
+
     try:
         data = await state.get_data()
         master_name = data.get("master_name", "")
         master_services = data.get("master_services", [])
-        
+
         # Allow empty services list (will default to all services)
-        
+
         # Save to DB
         success = await storage.set_master_services(master_name, master_services)
-        
+
         if success:
             if master_services:
                 services_str = ", ".join(master_services)
             else:
                 services_str = "все услуги"
-            
+
             text = f"{E.CHECK} <b>Услуги сохранены</b>\n\n"
             text += f"Мастер: {html.escape(master_name)}\n"
             text += f"Услуги: {services_str}"
-            
+
             await state.clear()
-            await edit_with_retry(
-                callback.message,
-                text,
-                reply_markup=keyboards.admin_kb(),
-                parse_mode="HTML"
-            )
+            await edit_with_retry(callback.message, text, reply_markup=keyboards.admin_kb(), parse_mode="HTML")
         else:
             await callback.answer("Ошибка сохранения", show_alert=True)
             return
@@ -1444,6 +1556,7 @@ async def cb_save_master_services(callback: CallbackQuery, state: FSMContext):
 # Per-master service prices admin UI
 # ======================================================================
 
+
 @router.callback_query(F.data.startswith("master_prices:"))
 async def cb_master_prices(callback: CallbackQuery, state: FSMContext):
     """Show per-master service price editor."""
@@ -1452,8 +1565,9 @@ async def cb_master_prices(callback: CallbackQuery, state: FSMContext):
         await callback.answer("Мастер не найден", show_alert=True)
         return
     custom_prices = await storage.get_all_master_service_prices(master_name)
-    text = (f"{E.MONEY} <b>Цены мастера {html.escape(master_name)}</b>\n\n"
-            "Нажмите на услугу чтобы установить свою цену:\n\n")
+    text = (
+        f"{E.MONEY} <b>Цены мастера {html.escape(master_name)}</b>\n\nНажмите на услугу чтобы установить свою цену:\n\n"
+    )
     buttons = []
     for svc, global_price in config.SERVICES.items():
         custom = custom_prices.get(svc)
@@ -1465,9 +1579,7 @@ async def cb_master_prices(callback: CallbackQuery, state: FSMContext):
     buttons.append([InlineKeyboardButton(text="Сбросить все цены", callback_data=f"reset_mprices:{master_name}")])
     buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
     await edit_with_retry(
-        callback.message, text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
+        callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
     )
     await callback.answer()
 
@@ -1482,15 +1594,24 @@ async def cb_edit_master_price(callback: CallbackQuery, state: FSMContext):
     _, master_name, service_name = parts
     global_price = config.SERVICES.get(service_name, 0)
     current = await storage.get_master_service_price(master_name, service_name)
-    cur_str = f"{current:,} ₸".replace(",", " ") if current is not None else f"глобальная ({global_price:,} ₸)".replace(",", " ")
+    cur_str = (
+        f"{current:,} ₸".replace(",", " ")
+        if current is not None
+        else f"глобальная ({global_price:,} ₸)".replace(",", " ")
+    )
     await state.update_data(master_name=master_name, service_name=service_name)
     await state.set_state(AdminStates.set_master_price)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="Сбросить", callback_data=f"del_mprice:{master_name}:{service_name}"),
-        InlineKeyboardButton(text="Отмена", callback_data=f"master_prices:{master_name}"),
-    ]])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Сбросить", callback_data=f"del_mprice:{master_name}:{service_name}"),
+                InlineKeyboardButton(text="Отмена", callback_data=f"master_prices:{master_name}"),
+            ]
+        ]
+    )
     await send_with_retry(
-        callback.bot, callback.message.chat.id,
+        callback.bot,
+        callback.message.chat.id,
         f"{E.MONEY} <b>Цена на «{html.escape(service_name)}»</b>\n"
         f"Мастер: {html.escape(master_name)}\n"
         f"Текущая: {cur_str}\n\n"
@@ -1509,7 +1630,8 @@ async def handle_set_master_price(message: Message, state: FSMContext):
     text = message.text.strip() if message.text else ""
     if not text.isdigit() or int(text) <= 0:
         await send_with_retry(
-            message.bot, message.chat.id,
+            message.bot,
+            message.chat.id,
             f"{E.EXCLAMATION} Введите положительное целое число.",
             parse_mode="HTML",
         )
@@ -1518,7 +1640,8 @@ async def handle_set_master_price(message: Message, state: FSMContext):
     await storage.set_master_service_price(master_name, service_name, price)
     await state.clear()
     await send_with_retry(
-        message.bot, message.chat.id,
+        message.bot,
+        message.chat.id,
         f"{E.CHECK} <b>Цена установлена</b>\n\n"
         f"{E.SCISSORS} {html.escape(service_name)}\n"
         f"{E.MASTER} {html.escape(master_name)}\n"
@@ -1538,7 +1661,7 @@ async def cb_delete_master_price(callback: CallbackQuery, state: FSMContext):
     _, master_name, service_name = parts
     await storage.delete_master_service_price(master_name, service_name)
     await state.clear()
-    await callback.answer(f"Цена сброшена — теперь глобальная", show_alert=True)
+    await callback.answer("Цена сброшена — теперь глобальная", show_alert=True)
     # Refresh prices screen
     custom_prices = await storage.get_all_master_service_prices(master_name)
     text = f"{E.MONEY} <b>Цены мастера {html.escape(master_name)}</b>\n\nНажмите на услугу:"
@@ -1553,9 +1676,7 @@ async def cb_delete_master_price(callback: CallbackQuery, state: FSMContext):
     buttons.append([InlineKeyboardButton(text="Сбросить все", callback_data=f"reset_mprices:{master_name}")])
     buttons.append([InlineKeyboardButton(text="Назад", callback_data=f"admin_master_detail:{master_name}")])
     await edit_with_retry(
-        callback.message, text,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
-        parse_mode="HTML"
+        callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML"
     )
 
 
@@ -1568,8 +1689,7 @@ async def cb_reset_all_master_prices(callback: CallbackQuery):
     await callback.answer("Все цены сброшены на глобальные", show_alert=True)
     await edit_with_retry(
         callback.message,
-        f"{E.CHECK} <b>Цены сброшены</b>\n\n"
-        f"Теперь для мастера {html.escape(master_name)} действуют глобальные цены.",
+        f"{E.CHECK} <b>Цены сброшены</b>\n\nТеперь для мастера {html.escape(master_name)} действуют глобальные цены.",
         reply_markup=keyboards.admin_master_detail_kb(master_name),
-        parse_mode="HTML"
+        parse_mode="HTML",
     )

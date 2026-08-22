@@ -1,6 +1,9 @@
-import os, re, logging, asyncio
+import asyncio
+import logging
+import os
+import re
 from contextlib import asynccontextmanager
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 _pool = None
@@ -19,10 +22,11 @@ async def init_pool() -> None:
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
         import asyncpg
+
         # P1 FIX: pool size + command timeout from env (defaults preserve previous behaviour)
         import config as _cfg
 
-        last_exc: Optional[BaseException] = None
+        last_exc: BaseException | None = None
         for attempt in range(5):
             try:
                 _pool = await asyncpg.create_pool(
@@ -41,10 +45,9 @@ async def init_pool() -> None:
                 return
             except Exception as e:  # connection refused, auth fail, DNS, etc.
                 last_exc = e
-                delay = 2 ** attempt
+                delay = 2**attempt
                 logger.warning(
-                    f"db.py: PG connect attempt {attempt + 1}/5 failed: "
-                    f"{type(e).__name__}: {e}. Retrying in {delay}s."
+                    f"db.py: PG connect attempt {attempt + 1}/5 failed: {type(e).__name__}: {e}. Retrying in {delay}s."
                 )
                 await asyncio.sleep(delay)
         # All retries exhausted
@@ -54,14 +57,17 @@ async def init_pool() -> None:
         _use_pg = False
         logger.info("db.py: SQLite mode (no DATABASE_URL)")
 
+
 async def close_pool() -> None:
     global _pool
     if _pool is not None:
         await _pool.close()
         _pool = None
 
+
 def is_postgres() -> bool:
     return _use_pg
+
 
 def _q2d(sql: str) -> str:
     """Convert ? placeholders to $1, $2, ... for PostgreSQL."""
@@ -75,9 +81,9 @@ def _q2d(sql: str) -> str:
             r.append(c)
     return "".join(r)
 
-_RX_INSERT_OR_IGNORE = re.compile(
-    r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE
-)
+
+_RX_INSERT_OR_IGNORE = re.compile(r"\bINSERT\s+OR\s+IGNORE\s+INTO\b", re.IGNORECASE)
+
 
 class DBConn:
     __slots__ = ("_conn", "_is_pg")
@@ -90,15 +96,17 @@ class DBConn:
         if self._is_pg:
             return [dict(r) for r in await self._conn.fetch(_q2d(sql), *a)]
         import aiosqlite
+
         self._conn.row_factory = aiosqlite.Row
         async with self._conn.execute(sql, a) as c:
             return [dict(r) for r in await c.fetchall()]
 
-    async def fetchrow(self, sql: str, *a) -> Optional[dict]:
+    async def fetchrow(self, sql: str, *a) -> dict | None:
         if self._is_pg:
             r = await self._conn.fetchrow(_q2d(sql), *a)
             return dict(r) if r else None
         import aiosqlite
+
         self._conn.row_factory = aiosqlite.Row
         async with self._conn.execute(sql, a) as c:
             r = await c.fetchone()
@@ -149,20 +157,14 @@ class DBConn:
         if self._is_pg:
             pg_ph = ", ".join(f"${i + 1}" for i in range(len(vals)))
             conflict = ", ".join(conflict_cols)
-            update_set = ", ".join(
-                f"{c}=EXCLUDED.{c}" for c in cols if c not in conflict_cols
-            )
-            sql = (
-                f"INSERT INTO {table} ({cols_sql}) VALUES ({pg_ph}) "
-                f"ON CONFLICT ({conflict}) DO "
-                + (f"UPDATE SET {update_set}" if update_set else "NOTHING")
+            update_set = ", ".join(f"{c}=EXCLUDED.{c}" for c in cols if c not in conflict_cols)
+            sql = f"INSERT INTO {table} ({cols_sql}) VALUES ({pg_ph}) ON CONFLICT ({conflict}) DO " + (
+                f"UPDATE SET {update_set}" if update_set else "NOTHING"
             )
             await self._conn.execute(sql, *vals)
         else:
             ph = ", ".join("?" for _ in vals)
-            await self._conn.execute(
-                f"INSERT OR REPLACE INTO {table} ({cols_sql}) VALUES ({ph})", vals
-            )
+            await self._conn.execute(f"INSERT OR REPLACE INTO {table} ({cols_sql}) VALUES ({ph})", vals)
             await self._conn.commit()
 
     @asynccontextmanager
@@ -187,6 +189,9 @@ async def acquire():
         async with _pool.acquire() as raw:
             yield DBConn(raw, True)
     else:
-        import aiosqlite, config
+        import aiosqlite
+
+        import config
+
         async with aiosqlite.connect(config.DB_PATH) as raw:
             yield DBConn(raw, False)
