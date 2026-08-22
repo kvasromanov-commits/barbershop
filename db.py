@@ -9,6 +9,14 @@ logger = logging.getLogger(__name__)
 _pool = None
 _use_pg: bool = False
 
+# MED-1 FIX: SQLite concurrency hardening.
+# `busy_timeout` is a *per-connection* pragma and is NOT persisted in the database
+# file (unlike journal_mode). Because `acquire()` opens a new connection per call,
+# every connection must (re)apply it. Without it, concurrent writers under
+# GLOBAL_CONCURRENCY immediately raise "database is locked" instead of waiting for
+# the WAL write lock. Configurable via env (milliseconds); 30000 = 30 s.
+SQLITE_BUSY_TIMEOUT_MS = int(os.getenv("SQLITE_BUSY_TIMEOUT_MS", "30000"))
+
 
 async def init_pool() -> None:
     """Initialise the DB pool.
@@ -173,7 +181,12 @@ class DBConn:
             async with self._conn.transaction():
                 yield self
         else:
-            await self._conn.execute("BEGIN EXCLUSIVE")
+            # MED-1 FIX: BEGIN IMMEDIATE (not EXCLUSIVE) under WAL. It acquires the
+            # write (RESERVED) lock up front so the lock is held for the whole
+            # transaction and other writers wait via busy_timeout instead of
+            # erroring. Unlike EXCLUSIVE it still allows concurrent *readers*
+            # (WAL readers do not need the write lock), which reduces contention.
+            await self._conn.execute("BEGIN IMMEDIATE")
             try:
                 yield self
                 await self._conn.commit()
@@ -194,4 +207,17 @@ async def acquire():
         import config
 
         async with aiosqlite.connect(config.DB_PATH) as raw:
+            # MED-1 FIX: per-connection pragmas. `journal_mode=WAL` and
+            # `synchronous=NORMAL` are already persisted by storage._init_sqlite,
+            # but re-asserting them is idempotent and keeps connections opened
+            # before init consistent. `busy_timeout` is the critical one (see
+            # SQLITE_BUSY_TIMEOUT_MS): it makes concurrent writers wait for the
+            # write lock instead of raising "database is locked". A pragma failure
+            # must never break the request, so it is best-effort.
+            try:
+                await raw.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
+                await raw.execute("PRAGMA journal_mode=WAL")
+                await raw.execute("PRAGMA synchronous=NORMAL")
+            except Exception as _pe:  # pragma setup must not break acquire
+                logger.warning("db.acquire: failed to set SQLite pragmas: %s", type(_pe).__name__)
             yield DBConn(raw, False)

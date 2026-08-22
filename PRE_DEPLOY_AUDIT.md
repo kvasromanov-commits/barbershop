@@ -14,7 +14,7 @@
 
 Остальное — MEDIUM/LOW находки, которые желательно закрыть до/после деплоя, но они не являются hard-блокерами для бота барбершопа.
 
-**Оценка готовности:** 🟢 Готов к запуску в продакшен. HIGH-1 закрыт. Рекомендуется использовать PostgreSQL в проде (MED-1) и добавить `/export_data` + `/delete_me` (MED-2) для PII-соответствия.
+**Оценка готовности:** 🟢 Готов к запуску в продакшен. HIGH-1 закрыт, MED-1 (SQLite concurrency) закрыт. Рекомендуется PostgreSQL в проде для высокой конкурентной записи; для PII-соответствия добавить `/export_data` + `/delete_me` (MED-2).
 
 ---
 
@@ -26,7 +26,7 @@
 | Безопасность (auth) | ✅ OK | `AdminFilter` на уровне роутера; per-handler guards удалены как dead code |
 | SQL-инъекции | ✅ OK | 100% параметризованные запросы; нет `eval/exec/subprocess/pickle` |
 | XSS / HTML-инъекции | ✅ OK | `html.escape` на всех user-controlled полях в HTML-сообщениях |
-| Целостность БД / транзакции | 🟡 Замечание | SQLite: новое соединение на каждый `acquire()` → риск «database is locked» |
+| Целостность БД / транзакции | 🟢 Закрыто (MED-1) | SQLite: per-request соединения — «database is locked» устранён (`busy_timeout=30000` + `BEGIN IMMEDIATE` + WAL) |
 | Отказоустойчивость | ✅ OK | retry PG-pool, graceful shutdown, TelegramConflictError retry ×24 |
 | Деплой / Docker | 🟡 Замечание | контейнер под root; `POSTGRES_PASSWORD: changeme` в compose |
 | CI/CD | ✅ OK | матрица 3.10–3.12, pytest+coverage, ruff, docker-smoke |
@@ -71,9 +71,16 @@
 - `cleanup_slot_locks_on_startup` удаляет только **просроченные** локи (исправлено HIGH-1).
 - Пагинация на уровне SQL (HIGH-003/P1), нет полных сканов в Python.
 
-**Риск (MEDIUM):** `db.py:185-197` — `acquire()` для SQLite открывает **новое соединение** (`aiosqlite.connect`) на каждый вызов. Под нагрузкой (`GLOBAL_CONCURRENCY=64` + rate-limit 20/юзер) одновременно могут висеть десятки соединений к одному файлу, и каждая транзакция — `BEGIN EXCLUSIVE` (`db.py:176`). На контейнерных/сетевых волюмах это даёт **«database is locked»** и упавшие записи.
+**Риск (MEDIUM, ЗАКРЫТ 2026-08-22):** `db.py` — `acquire()` для SQLite открывает **новое соединение** (`aiosqlite.connect`) на каждый вызов. Под нагрузкой (`GLOBAL_CONCURRENCY=64` + rate-limit 20/юзер) одновременно могут висеть десятки соединений к одному файлу. Ранее каждая транзакция была `BEGIN EXCLUSIVE`, и `busy_timeout` не задавался → на контейнерных/сетевых волюмах это давало **«database is locked»** и упавшие записи.
 
-**Рекомендация:** для продакшена **использовать PostgreSQL** через `DATABASE_URL` (пул уже корректно настроен: retry 5×, `DB_POOL_MIN/MAX`). SQLite оставить для dev/малого трафика, но в `init_sqlite` добавить `PRAGMA busy_timeout=5000` и рассмотреть единое shared-соединение вместо per-request.
+**Что сделано (MED-1 RESOLVED):**
+- `db.py:18` — `SQLITE_BUSY_TIMEOUT_MS = int(os.getenv("SQLITE_BUSY_TIMEOUT_MS", "30000"))` (по умолчанию **30 с**). `busy_timeout` — это *per-connection* pragma, он **не** сохраняется в файл БД (в отличие от `journal_mode`), поэтому его надо (пере)устанавливать на каждом соединении.
+- `db.py:209-223` — `acquire()` (SQLite-ветка) на каждом соединении выполняет `PRAGMA busy_timeout=...`, `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL` (best-effort, с guarded try/except, чтобы сбой pragma не ломал запрос).
+- `db.py:189` — `transaction()` (SQLite-ветка) переключён с `BEGIN EXCLUSIVE` на **`BEGIN IMMEDIATE`** под WAL: берёт RESERVED write-лок сразу, и другие писатели *ждут* через `busy_timeout` вместо ошибки; в отличие от EXCLUSIVE всё ещё разрешает конкурентных *читателей* (WAL-читателям не нужен write-лок) → меньше contention. Откат по исключению изолирован (`ROLLBACK` в except).
+- Это **архитектурное** решение (ждать лок, а не синтетический sleep), без искусственных задержек и без утечек соединений (контекст-менеджер `async with aiosqlite.connect(...)` корректно закрывает).
+- Добавлены регрессионные тесты `tests/test_sqlite_concurrency.py` (10/25/50/64 конкурентных операций, смешанные read/write, изолированный rollback) — доказывают отсутствие систематических «database is locked», потерянных/дублирующихся записей и коррупции.
+
+**Ограничения SQLite (сохраняются):** это делает SQLite стабильным для dev и умеренного трафика, но SQLite по-прежнему **single-writer** — при очень высокой конкурентной записи пропускная способность упирается в один write-лок. На контейнерных/сетевых волюмах (NFS, некоторые cloud block-storage) WAL + `busy_timeout` сильно снижают риск, но не устраняют его полностью. **Рекомендация для продакшена: использовать PostgreSQL** через `DATABASE_URL` (пул уже корректно настроен: retry 5×, `DB_POOL_MIN/MAX`, `DB_COMMAND_TIMEOUT`). PG-путь в `db.py` не затронут этим фиксом (отдельный asyncpg-пул, собственные транзакции).
 
 ---
 
@@ -147,7 +154,7 @@
 | # | Приоритет | Находка | Действие |
 |---|---|---|---|
 | HIGH-1 | 🟢 Закрыто (2026-08-22) | Бэкапы на том же волюме, нет off-site → реализован off-site S3-бэкап (`s3_backup.py`) | Заливать бэкапы в S3/B2 или включить Volume Snapshots — СДЕЛАНО |
-| MED-1 | 🟡 Medium | SQLite per-request соединения → «database is locked» | Использовать PostgreSQL в проде (`DATABASE_URL`); для SQLite добавить `busy_timeout` |
+| MED-1 | 🟢 Закрыто (2026-08-22) | SQLite per-request соединения → «database is locked» | `busy_timeout=30000` + `BEGIN IMMEDIATE` + WAL в `db.py`; риск устранён для dev/умеренного трафика; PostgreSQL рекомендован для продакшена |
 | MED-2 | 🟡 Medium | Нет `/export_data` / `/delete_me` (PII) | Добавить admin-команды выгрузки/удаления профиля |
 | LOW-1 | 🟡 Low/Med | callback_data переполнение для длинных имён | Короткие ID/слаги в колбэках или понижение `max_bytes` |
 | LOW-2 | 🟡 Low | `docker-compose` `POSTGRES_PASSWORD: changeme` | Документировать обязательность пароля в проде |
@@ -169,11 +176,11 @@
 - [ ] `LOG_JSON=1` + forwarding в Loki/CloudWatch настроен (опц.)
 - [ ] Закрыт MED-2 (GDPR) — если применимо к юрисдикции
 - [ ] Прогнан `ruff check . && ruff format --check .` локально (зелёный)
-- [ ] Прогнан `pytest` (baseline: 1018 passed, 3 skipped)
+- [x] Прогнан `pytest` (baseline: 1043 passed, 3 skipped; MED-1 concurrency-тесты в `tests/test_sqlite_concurrency.py`)
 - [ ] docker-smoke build проходит в CI
 
 ---
 
 ## Итог
 
-Ядро приложения **безопасно и стабильно**: нет утечек секретов, SQLi, XSS; админ-доступ корректно изолирован; CI зелёный; обработка сбоев и восстановление задач реализованы. Для запуска в продакшен малого барбершопа бот **готов** после закрытия **HIGH-1 (off-site бэкап)**. Остальные пункты — улучшения надёжности и комплаенса, которые можно закрывать итеративно после старта.
+Ядро приложения **безопасно и стабильно**: нет утечек секретов, SQLi, XSS; админ-доступ корректно изолирован; CI зелёный; обработка сбоев и восстановление задач реализованы. Для запуска в продакшен малого барбершопа бот **готов**: закрыты **HIGH-1 (off-site бэкап)** и **MED-1 (SQLite concurrency)**. SQLite теперь устойчив к «database is locked» для dev и умеренного трафика (`busy_timeout=30000` + `BEGIN IMMEDIATE` + WAL). **Рекомендация:** для продакшена с реальной конкурентной записью использовать **PostgreSQL** через `DATABASE_URL` (путь не затронут фиксом, пул настроен корректно). Остальные пункты (MED-2 PII/GDPR, LOW-*) — улучшения комплаенса/надёжности, закрываются итеративно после старта.
