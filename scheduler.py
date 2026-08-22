@@ -353,12 +353,25 @@ def shutdown_scheduler():
 
 async def backup_database_job():
     """MED-006 FIX: Daily backup job at 3:30 AM - moved from startup to scheduler.
-    Runs in thread pool to avoid blocking event loop."""
+    Runs in thread pool to avoid blocking event loop.
+
+    HIGH-1 FIX: the local on-disk backup is produced first (and never touched on
+    S3 failure), then a best-effort off-site (S3-compatible) upload runs. A
+    transient S3 error must not crash the job or remove the local copy.
+    """
     from backup import backup_database, cleanup_old_backups
 
     try:
-        await asyncio.to_thread(backup_database)
+        backup_file = await asyncio.to_thread(backup_database)
         await asyncio.to_thread(cleanup_old_backups)
+        if backup_file:
+            # HIGH-1 FIX: best-effort off-site upload + S3 retention.
+            try:
+                from s3_backup import offsite_backup
+
+                await asyncio.to_thread(offsite_backup, backup_file)
+            except Exception as se:
+                logger.error(f"Off-site backup step failed (local backup preserved): {se}")
         logger.info("Scheduled daily backup completed")
     except Exception as e:
         logger.error(f"Scheduled backup failed: {e}")

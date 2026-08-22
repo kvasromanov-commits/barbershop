@@ -71,6 +71,23 @@ psql "$DATABASE_URL" < restore.sql
 
 > ⚠️ PostgreSQL restore REPLACES the current DB. Take a fresh backup first.
 
+### Restore from off-site backup (S3-compatible, HIGH-1 FIX)
+If the Railway volume is lost or corrupted, recover from the off-site copy:
+```bash
+# 1. List off-site backups (AWS CLI / any S3 client). Example with aws:
+aws s3 ls s3://$S3_BUCKET/$S3_PREFIX/
+
+# 2. Download the latest backup
+aws s3 cp "s3://$S3_BUCKET/$S3_PREFIX/barbershop_YYYYMMDD_HHMMSS.db.gz" ./restore.db.gz
+gunzip restore.db.gz
+
+# 3a. SQLite: point DB_PATH at the restored file (or replace /app/data/barbershop.db)
+# 3b. PostgreSQL: gunzip the .sql.gz then: psql "$DATABASE_URL" < restore.sql
+```
+Off-site upload is best-effort and verifies each upload (`head_object`); if the
+volume is gone but the bucket is intact you have a full daily history up to
+`S3_BACKUP_RETENTION` copies. A failed off-site upload never deletes the local copy.
+
 ### Rotate BOT_TOKEN (suspected leak)
 1. In Telegram: contact @BotFather → `/revoke` → get new token.
 2. `railway variables` → set new `BOT_TOKEN` value → save. Service will redeploy.

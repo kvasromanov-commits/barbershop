@@ -9,3 +9,5 @@ tzdata==2024.2
 # P1 FIX: aioredis 2.0.1 removed (deprecated). aiogram 3.7 uses redis>=4.6
 # via aiogram.fsm.storage.redis.RedisStorage directly.
 redis>=4.6.0
+# HIGH-1 FIX: off-site (S3-compatible) backups to AWS S3 / Cloudflare R2 / Backblaze B2.
+boto3==1.43.78

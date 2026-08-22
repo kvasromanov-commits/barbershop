@@ -141,7 +141,36 @@ Retains the latest 30 backups in `/app/backups/`.
 
 See `OPERATIONS.md § Disaster Recovery` for full procedure.
 
-> ⚠️ Backups live on the same Railway volume as the bot. For redundancy, copy them off-site (S3/B2). This is a known TODO for high-availability deployments.
+### Off-site backup (HIGH-1 FIX — recommended for production)
+
+The local backup still lives on the Railway volume (kept as a fast local copy),
+but a copy is also pushed to any **S3-compatible** store (AWS S3, Cloudflare R2,
+Backblaze B2, MinIO). This protects against total volume loss — the previous
+single point of failure.
+
+The daily job (`scheduler.backup_database_job`) runs the local backup first, then
+best-effort uploads the file with a **timestamped object key** (previous backups
+are never overwritten), **verifies** the upload via `head_object`, retries with
+exponential backoff on transient errors, and prunes old off-site copies beyond
+`S3_BACKUP_RETENTION` (default 30). A failed or unconfigured off-site step never
+deletes or breaks the local backup, and never crashes the scheduler.
+
+Enable it by setting **all** of the following in your environment (see
+`.env.example`):
+
+| Variable | Purpose | Example |
+|---|---|---|
+| `S3_ENDPOINT_URL` | Custom endpoint for R2/B2/MinIO (leave empty for AWS S3) | `https://<id>.r2.cloudflarestorage.com` |
+| `S3_REGION` | Bucket region (optional for R2/B2) | `auto` / `us-east-1` |
+| `S3_BUCKET` | Target bucket (required to enable) | `barbershop-backups` |
+| `S3_PREFIX` | Key prefix / "folder" (optional) | `prod` |
+| `S3_ACCESS_KEY_ID` | Scoped, least-privilege key | — |
+| `S3_SECRET_ACCESS_KEY` | Secret for the key above | — |
+| `S3_BACKUP_RETENTION` | Off-site copies to keep (default 30) | `30` |
+
+If `S3_BUCKET` / `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` are not all set, the
+off-site step is **silently skipped** (dev mode). Credentials are read from the
+environment only — never hardcoded, never logged.
 
 ---
 
