@@ -4,7 +4,7 @@ asyncpg==0.29.0
 APScheduler==3.10.4
 python-dotenv==1.0.1
 aiohttp==3.9.5
-tzdata==2024.2
+tzdata==2026.5
 # pytz removed 2026-08-18 — replaced by stdlib zoneinfo (see tz_utils.py).
 # P1 FIX: aioredis 2.0.1 removed (deprecated). aiogram 3.7 uses redis>=4.6
 # via aiogram.fsm.storage.redis.RedisStorage directly.
