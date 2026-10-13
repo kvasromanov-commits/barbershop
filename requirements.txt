@@ -2,7 +2,7 @@ aiogram==3.7.0
 aiosqlite==0.20.0
 asyncpg==0.29.0
 APScheduler==3.10.4
-python-dotenv==1.0.1
+python-dotenv==1.2.4
 aiohttp==3.9.5
 tzdata==2024.2
 # pytz removed 2026-08-18 — replaced by stdlib zoneinfo (see tz_utils.py).
