@@ -10,4 +10,4 @@ tzdata==2024.2
 # via aiogram.fsm.storage.redis.RedisStorage directly.
 redis>=4.6.0
 # HIGH-1 FIX: off-site (S3-compatible) backups to AWS S3 / Cloudflare R2 / Backblaze B2.
-boto3==1.43.78
+boto3==1.43.111
