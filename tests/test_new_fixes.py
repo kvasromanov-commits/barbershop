@@ -215,68 +215,80 @@ class TestHandleContactPhoneValidation:
             await handle_contact(msg, state)
         state.clear.assert_called()
 
-    # -- Manual input  valid formats ------------------------------------------
+    # -- Text input (no contact attached): rejected, hint only, state kept -----
+    # MED-001 manual input was rescinded (commit a35773e): any text message
+    # in this state must be answered with the phone_kb hint and state kept.
 
-    async def test_manual_plus7_format(self, db):
+    async def test_manual_plus7_rejected(self, db):
         from handlers.start import handle_contact
 
         msg = self._msg(text="+7 700 123 45 67", user_id=201)
         state = make_fsm()
-        with patch("handlers.start.send_with_retry", new=AsyncMock()):
+        send_mock = AsyncMock()
+        with patch("handlers.start.send_with_retry", new=send_mock):
             await handle_contact(msg, state)
         import storage
 
+        send_mock.assert_called_once()
+        state.clear.assert_not_called()
         user = await storage.get_user(201)
-        assert user is not None
-        assert user["phone"] is not None
-        assert user["phone"].startswith("+")
+        assert user is None or user.get("phone") is None
 
-    async def test_manual_8_prefix_normalized(self, db):
+    async def test_manual_8_prefix_rejected(self, db):
         from handlers.start import handle_contact
 
         msg = self._msg(text="87001234567", user_id=202)
         state = make_fsm()
-        with patch("handlers.start.send_with_retry", new=AsyncMock()):
+        send_mock = AsyncMock()
+        with patch("handlers.start.send_with_retry", new=send_mock):
             await handle_contact(msg, state)
         import storage
 
+        send_mock.assert_called_once()
+        state.clear.assert_not_called()
         user = await storage.get_user(202)
-        assert user is not None
-        assert user["phone"] == "+77001234567"
+        assert user is None or user.get("phone") is None
 
-    async def test_manual_spaces_dashes_stripped(self, db):
+    async def test_manual_spaces_dashes_rejected(self, db):
         from handlers.start import handle_contact
 
         msg = self._msg(text="+7 (700) 123-45-67", user_id=203)
         state = make_fsm()
-        with patch("handlers.start.send_with_retry", new=AsyncMock()):
+        send_mock = AsyncMock()
+        with patch("handlers.start.send_with_retry", new=send_mock):
             await handle_contact(msg, state)
         import storage
 
+        send_mock.assert_called_once()
+        state.clear.assert_not_called()
         user = await storage.get_user(203)
-        assert user is not None
-        assert user["phone"] is not None
+        assert user is None or user.get("phone") is None
 
-    async def test_manual_no_plus_prefix_gets_plus(self, db):
+    async def test_manual_no_plus_prefix_rejected(self, db):
         from handlers.start import handle_contact
 
         msg = self._msg(text="77001234567", user_id=204)
         state = make_fsm()
-        with patch("handlers.start.send_with_retry", new=AsyncMock()):
+        send_mock = AsyncMock()
+        with patch("handlers.start.send_with_retry", new=send_mock):
             await handle_contact(msg, state)
         import storage
 
+        send_mock.assert_called_once()
+        state.clear.assert_not_called()
         user = await storage.get_user(204)
-        assert user is not None
+        assert user is None or user.get("phone") is None
 
-    async def test_valid_manual_clears_state(self, db):
+    async def test_valid_manual_not_cleared(self, db):
         from handlers.start import handle_contact
 
         msg = self._msg(text="+77001234567", user_id=205)
         state = make_fsm()
-        with patch("handlers.start.send_with_retry", new=AsyncMock()):
+        send_mock = AsyncMock()
+        with patch("handlers.start.send_with_retry", new=send_mock):
             await handle_contact(msg, state)
-        state.clear.assert_called()
+        send_mock.assert_called_once()
+        state.clear.assert_not_called()
 
     # -- Manual input  invalid formats  error, state NOT cleared --------------
 
