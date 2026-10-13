@@ -249,35 +249,16 @@ async def _get_available_slots(date_str: str, master: str) -> dict[str, str]:
 async def cb_book(callback: CallbackQuery, state: FSMContext):
     telegram_id = callback.from_user.id
 
-    # TASK-10: Check if user has phone number, ask if not
+    # Для записи нужен контакт: сразу показываем системную Telegram-кнопку
+    # запроса номера, без ручного ввода и лишнего промежуточного экрана.
     user = await storage.get_user(telegram_id)
     if not user or not user.get("phone"):
-        text = "<b>Для записи укажите номер телефона</b>\n\n"
-        text += "Введите ваш номер телефона (например: +7 700 123 45 67)\n"
-        text += f"или нажмите кнопку «{E.MOBILE} Поделиться номером»"
-        try:
-            await callback.message.edit_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Поделиться номером", callback_data="share_phone")],
-                        [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
-                    ]
-                ),
-                parse_mode="HTML",
-            )
-        except Exception:
-            await callback.message.answer(
-                text,
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="Поделиться номером", callback_data="share_phone")],
-                        [InlineKeyboardButton(text="Назад", callback_data="main_menu")],
-                    ]
-                ),
-                parse_mode="HTML",
-            )
         await state.set_state(ContactStates.waiting_contact)
+        await callback.message.answer(
+            "<b>Чтобы начать запись, поделитесь номером телефона</b>",
+            reply_markup=keyboards.phone_kb(),
+            parse_mode="HTML",
+        )
         await callback.answer()
         return
 

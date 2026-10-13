@@ -1,7 +1,5 @@
 import html
 import logging
-import re
-
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -94,32 +92,12 @@ async def handle_contact(message: Message, state: FSMContext):
     phone = None
     if message.contact:
         phone = message.contact.phone_number
-    elif message.text:
-        # MED-001 FIX: Allow manual phone number input with validation
-        raw = message.text.strip()
-        cleaned = re.sub(r"[\s\-\(\)]", "", raw)
-        if re.match(r"^\+?[7-8]\d{10}$", cleaned) or re.match(r"^\+?\d{10,15}$", cleaned):
-            # Normalize: ensure starts with +
-            if cleaned.startswith("8") and len(cleaned) == 11:
-                cleaned = "+7" + cleaned[1:]
-            elif not cleaned.startswith("+"):
-                cleaned = "+" + cleaned
-            phone = cleaned
-        else:
-            await send_with_retry(
-                message.bot,
-                message.chat.id,
-                f"{E.CROSS} Неверный формат номера.\n"
-                f"Введите в формате: <code>+7 700 123 45 67</code>\n"
-                f"Или нажмите кнопку «Поделиться номером».",
-                parse_mode="HTML",
-            )
-            return
     else:
         await send_with_retry(
             message.bot,
             message.chat.id,
-            f"{E.CROSS} Пожалуйста, введите номер телефона или нажмите кнопку «Поделиться номером».",
+            f"{E.CROSS} Нажмите кнопку «Поделиться номером», чтобы продолжить запись.",
+            reply_markup=keyboards.phone_kb(),
             parse_mode="HTML",
         )
         return
